@@ -12,7 +12,7 @@ settimeout = nil
 local busted = {}
 busted._COPYRIGHT   = "Copyright (c) 2013 Olivine Labs, LLC."
 busted._DESCRIPTION = "A unit testing framework with a focus on being easy to use. http://www.olivinelabs.com/busted"
-busted._VERSION     = "Busted 1.9.1"
+busted._VERSION     = "Busted 1.10.0"
 
 -- set defaults
 busted.defaultoutput = path.is_windows and "plain_terminal" or "utf_terminal"
@@ -47,6 +47,7 @@ system = nil
 local options = {}
 local current_context
 local test_is_async
+local current_test_filename
 
 -- report a test-process error as a failed test
 local internal_error = function(description, err)
@@ -144,6 +145,7 @@ end
 
 -- runs a testfile, loading its tests
 local load_testfile = function(filename)
+  current_test_filename = filename
   local old_TEST = _TEST
   _TEST = busted._VERSION
 
@@ -288,6 +290,22 @@ local match_tags = function(testName)
   end
 end
 
+local match_excluded_tags = function(testName)
+  if #options.excluded_tags > 0 then
+
+    for t = 1, #options.excluded_tags do
+      if testName:find(options.excluded_tags[t]) then
+        return true
+      end
+    end
+
+  end
+
+  -- By default we return false so that Busted will not exclude a test
+  -- unless explicitly told to do so.
+  return false
+end
+
 -- wraps test callbacks (it, for_each, setup, etc.) to ensure that sync
 -- tests also call the `done` callback to mark the test/step as complete
 local syncwrapper = function(f)
@@ -386,7 +404,15 @@ next_test = function()
 
     this_test.done = done
 
-    local ok, err = pcall(this_test.f, wrap_done(done)) 
+    local trace
+    local ok, err = xpcall(
+      function()
+        this_test.f(wrap_done(done))
+      end,
+      function(err)
+        trace = debug.traceback("", 2)
+        return err
+      end)
     if ok then
       -- test returned, set default timer if one hasn't been set already
       if settimeout and not timer and not this_test.done_trace then
@@ -398,7 +424,19 @@ next_test = function()
         err = pretty.write(err)
       end
 
-      local trace = debug.traceback("", 2)
+      -- remove all frames after the last frame found in the test file
+      local lines = {}
+      local j = 0
+      local last_j = nil
+      for line in trace:gmatch("[^\r\n]+") do
+        j = j + 1
+        lines[j] = line
+        local fname, lineno = line:match('%s+([^:]+):(%d+):')
+        if fname == current_test_filename then
+          last_j = j
+        end
+      end
+      trace = table.concat(lines, trace:match("[\r\n]+"), 1, last_j)
 
       err, trace = moon.rewrite_traceback(err, trace)
 
@@ -584,6 +622,10 @@ busted.pending = function(name)
     name = current_context.desc .. " / " .. name
   }
 
+  if match_excluded_tags(test.name) then
+    return
+  end
+
   test.context:increment_test_count()
 
   local debug_info = debug.getinfo(2)
@@ -607,6 +649,10 @@ busted.it = function(name, test_func)
     context = current_context,
     name = current_context.desc .. " / " .. name
   }
+
+  if match_excluded_tags(test.name) then
+    return
+  end
 
   test.context:increment_test_count()
 
