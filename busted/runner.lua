@@ -1,15 +1,16 @@
 -- Busted command-line runner
 
 local path = require 'pl.path'
+local tablex = require 'pl.tablex'
 local term = require 'term'
 local utils = require 'busted.utils'
-local osexit = require 'busted.compatibility'.osexit
+local exit = require 'busted.compatibility'.exit
 local loaded = false
 
 return function(options)
   if loaded then return else loaded = true end
 
-  local options = options or {}
+  options = tablex.update(require 'busted.options', options or {})
   options.defaultOutput = term.isatty(io.stdout) and 'utfTerminal' or 'plainTerminal'
 
   local busted = require 'busted.core'()
@@ -34,20 +35,20 @@ return function(options)
   local cliArgs, err = cli:parse(arg)
   if not cliArgs then
     io.stderr:write(err .. '\n')
-    osexit(1, true)
+    exit(1)
   end
 
   if cliArgs.version then
     -- Return early if asked for the version
     print(busted.version)
-    osexit(0, true)
+    exit(0)
   end
 
   -- Load current working directory
   local _, err = path.chdir(path.normpath(cliArgs.directory))
   if err then
     io.stderr:write(appName .. ': error: ' .. err .. '\n')
-    osexit(1, true)
+    exit(1)
   end
 
   -- If coverage arg is passed in, load LuaCovsupport
@@ -106,68 +107,55 @@ return function(options)
     return nil, true
   end)
 
-  -- Set up output handler to listen to events
-  local outputHandlerOptions = {
-    verbose = cliArgs.verbose,
-    suppressPending = cliArgs['suppress-pending'],
-    language = cliArgs.lang,
-    deferPrint = cliArgs['defer-print'],
-    arguments = cliArgs.Xoutput
-  }
-
-  local outputHandler = outputHandlerLoader(busted, cliArgs.output, outputHandlerOptions, options.defaultOutput)
-  outputHandler:subscribe(outputHandlerOptions)
-
-  if cliArgs['enable-sound'] then
-    require 'busted.outputHandlers.sound'(outputHandlerOptions)
-  end
-
   -- Set up randomization options
   busted.sort = cliArgs['sort-tests']
   busted.randomize = cliArgs['shuffle-tests']
   busted.randomseed = tonumber(cliArgs.seed) or os.time()
 
-  -- Set up tag and test filter options
-  local filterLoaderOptions = {
+  -- Set up output handler to listen to events
+  outputHandlerLoader(busted, cliArgs.output, {
+    defaultOutput = options.defaultOutput,
+    enableSound = cliArgs['enable-sound'],
+    verbose = cliArgs.verbose,
+    suppressPending = cliArgs['suppress-pending'],
+    language = cliArgs.lang,
+    deferPrint = cliArgs['defer-print'],
+    arguments = cliArgs.Xoutput,
+  })
+
+  -- Load tag and test filters
+  filterLoader(busted, {
     tags = cliArgs.tags,
     excludeTags = cliArgs['exclude-tags'],
     filter = cliArgs.filter,
     filterOut = cliArgs['filter-out'],
     list = cliArgs.list,
     nokeepgoing = not cliArgs['keep-going'],
-  }
-
-  -- Load tag and test filters
-  filterLoader(busted, filterLoaderOptions)
+  })
 
   -- Set up helper script
   if cliArgs.helper and cliArgs.helper ~= '' then
-    local helperOptions = {
+    helperLoader(busted, cliArgs.helper, {
       verbose = cliArgs.verbose,
       language = cliArgs.lang,
       arguments = cliArgs.Xhelper
-    }
-
-    helperLoader(busted, cliArgs.helper, helperOptions)
+    })
   end
-
-  -- Set up test loader options
-  local testFileLoaderOptions = {
-    verbose = cliArgs.verbose,
-    sort = cliArgs['sort-files'],
-    shuffle = cliArgs['shuffle-files'],
-    recursive = cliArgs['recursive'],
-    seed = busted.randomseed
-  }
 
   -- Load test directory
   local rootFiles = cliArgs.ROOT or { fileName }
   local pattern = cliArgs.pattern
   local testFileLoader = require 'busted.modules.test_file_loader'(busted, cliArgs.loaders)
-  testFileLoader(rootFiles, pattern, testFileLoaderOptions)
+  testFileLoader(rootFiles, pattern, {
+    verbose = cliArgs.verbose,
+    sort = cliArgs['sort-files'],
+    shuffle = cliArgs['shuffle-files'],
+    recursive = cliArgs['recursive'],
+    seed = busted.randomseed
+  })
 
   -- If running standalone, setup test file to be compatible with live coding
-  if not cliArgs.ROOT then
+  if options.standalone then
     local ctx = busted.context.get()
     local children = busted.context.children(ctx)
     local file = children[#children]
@@ -180,12 +168,7 @@ return function(options)
 
   busted.publish({ 'exit' })
 
-  local exit = 0
-  if failures > 0 or errors > 0 then
-    exit = failures + errors
-    if exit > 255 then
-      exit = 255
-    end
+  if options.standalone or failures > 0 or errors > 0 then
+    exit(failures + errors)
   end
-  osexit(exit, true)
 end

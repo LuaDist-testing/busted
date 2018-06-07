@@ -19,7 +19,7 @@ description = {
 }
 dependencies = {
   'lua >= 5.1',
-  'lua_cliargs >= 2.5-0',
+  'lua_cliargs >= 2.5-0, < 3.0',
   'luafilesystem >= 1.5.0',
   'dkjson >= 2.1.0',
   'say >= 1.3-0',
@@ -36,6 +36,7 @@ build = {
     ['busted.context']                        = 'busted/context.lua',
     ['busted.environment']                    = 'busted/environment.lua',
     ['busted.compatibility']                  = 'busted/compatibility.lua',
+    ['busted.options']                        = 'busted/options.lua',
     ['busted.done']                           = 'busted/done.lua',
     ['busted.runner']                         = 'busted/runner.lua',
     ['busted.status']                         = 'busted/status.lua',
