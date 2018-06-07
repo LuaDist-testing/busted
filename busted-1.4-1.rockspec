@@ -1,15 +1,15 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "busted"
-version = "1.3-1"
+version = "1.4-1"
 -- LuaDist source
 source = {
-  tag = "1.3-1",
+  tag = "1.4-1",
   url = "git://github.com/LuaDist-testing/busted.git"
 }
 -- Original source
 -- source = {
---   url = "https://github.com/downloads/Olivine-Labs/busted/busted-1.3.tar.gz",
+--   url = "https://github.com/downloads/Olivine-Labs/busted/busted-1.4.tar.gz",
 --   dir = "busted"
 -- }
 description = {
@@ -26,11 +26,11 @@ description = {
 }
 dependencies = {
   "lua >= 5.1",
-  "lua_cliargs >= 1.1",
+  "lua_cliargs >= 2.0",
   "luafilesystem >= 1.5.0",
   "dkjson >= 2.1.0",
-  "say >= 1.1-1",
-  "luassert >= 1.2-1",
+  "say >= 1.2-1",
+  "luassert >= 1.4-1",
   "ansicolors >= 1.0-1"
 }
 build = {
