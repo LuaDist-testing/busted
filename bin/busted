@@ -131,20 +131,10 @@ local outputHandlerOptions = {
 }
 
 outputHandler = outputHandlerLoader(cliArgs.output, cliArgs.o, outputHandlerOptions, busted)
-
-busted.subscribe({ 'test', 'start' }, outputHandler.testStart)
-busted.subscribe({ 'test', 'end' }, outputHandler.testEnd)
-busted.subscribe({ 'file', 'start' }, outputHandler.fileStart)
-busted.subscribe({ 'file', 'end' }, outputHandler.fileEnd)
-busted.subscribe({ 'suite', 'start' }, outputHandler.suiteStart)
-busted.subscribe({ 'suite', 'end' }, outputHandler.suiteEnd)
-busted.subscribe({ 'error' }, outputHandler.error)
+outputHandler:subscribe(outputHandlerOptions)
 
 if cliArgs.s then
-  local sound = require 'busted.outputHandlers.sound'(outputHandlerOptions, busted)
-  busted.subscribe({ 'test', 'end' }, sound.testEnd)
-  busted.subscribe({ 'suite', 'end' }, sound.suiteEnd)
-  busted.subscribe({ 'error' }, sound.error)
+  require 'busted.outputHandlers.sound'(outputHandlerOptions, busted)
 end
 
 local checkTag = function(name, tag, modifier)
@@ -177,8 +167,27 @@ end
 local testFileLoader = require 'busted.modules.test_file_loader'(busted, loaders)
 testFileLoader(rootFile, pattern)
 
+-- watch for test errors
+local failures = 0
+local errors = 0
+
+busted.subscribe({ 'error' }, function()
+  errors = errors + 1
+end)
+
+busted.subscribe({ 'test', 'end' }, function(element, parent, status)
+  if status == 'failure' then
+    failures = failures + 1
+  end
+end)
+
 busted.publish({ 'suite', 'start' })
 busted.execute()
 busted.publish({ 'suite', 'end' })
 
-os.exit(failures)
+local exit = 0
+if failures > 0 or errors > 0 then
+  exit = 1
+end
+
+os.exit(exit)

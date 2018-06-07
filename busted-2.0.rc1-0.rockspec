@@ -1,16 +1,16 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = 'busted'
-version = '2.0.rc0-0'
+version = '2.0.rc1-0'
 -- LuaDist source
 source = {
-  tag = "2.0.rc0-0",
+  tag = "2.0.rc1-0",
   url = "git://github.com/LuaDist-testing/busted.git"
 }
 -- Original source
 -- source = {
---   url = 'https://github.com/Olivine-Labs/busted/archive/v2.0.rc0.tar.gz',
---   dir = 'busted-2.0.rc0'
+--   url = 'https://github.com/Olivine-Labs/busted/archive/v2.0.rc1.tar.gz',
+--   dir = 'busted-2.0.rc1'
 -- }
 description = {
   summary = 'Elegant Lua unit testing.',
@@ -55,6 +55,7 @@ build = {
     ['busted.modules.files.moonscript']       = 'busted/modules/files/moonscript.lua',
     ['busted.modules.files.terra']            = 'busted/modules/files/terra.lua',
 
+    ['busted.outputHandlers.base']            = 'busted/outputHandlers/base.lua',
     ['busted.outputHandlers.utfTerminal']     = 'busted/outputHandlers/utfTerminal.lua',
     ['busted.outputHandlers.plainTerminal']   = 'busted/outputHandlers/plainTerminal.lua',
     ['busted.outputHandlers.TAP']             = 'busted/outputHandlers/TAP.lua',
