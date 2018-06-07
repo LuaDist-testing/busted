@@ -1,15 +1,15 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "busted"
-version = "1.1-1"
+version = "1.3-1"
 -- LuaDist source
 source = {
-  tag = "1.1-1",
+  tag = "1.3-1",
   url = "git://github.com/LuaDist-testing/busted.git"
 }
 -- Original source
 -- source = {
---   url = "https://github.com/downloads/Olivine-Labs/busted/busted-1.1.tar.gz",
+--   url = "https://github.com/downloads/Olivine-Labs/busted/busted-1.3.tar.gz",
 --   dir = "busted"
 -- }
 description = {
@@ -29,21 +29,25 @@ dependencies = {
   "lua_cliargs >= 1.1",
   "luafilesystem >= 1.5.0",
   "dkjson >= 2.1.0",
-  "say >= 1.0-1",
-  "luassert >= 1.0-1",
+  "say >= 1.1-1",
+  "luassert >= 1.2-1",
   "ansicolors >= 1.0-1"
 }
 build = {
   type = "builtin",
   modules = {
-    ["busted.busted"] = "src/busted.lua",
+    ["busted.core"] = "src/core.lua",
     ["busted.output.utf_terminal"] = "src/output/utf_terminal.lua",
     ["busted.output.plain_terminal"] = "src/output/plain_terminal.lua",
     ["busted.output.TAP"] = "src/output/TAP.lua",
     ["busted.output.json"] = "src/output/json.lua",
-    ["busted.interface"] = "src/interface.lua",
+    ["busted.init"] = "src/init.lua",
     ["busted.languages.en"] = "src/languages/en.lua",
-    ["busted.languages.ar"] = "src/languages/ar.lua"
+    ["busted.languages.ar"] = "src/languages/ar.lua",
+    ["busted.languages.fr"] = "src/languages/fr.lua",
+    ["busted.languages.nl"] = "src/languages/nl.lua",
+    ["busted.languages.ru"] = "src/languages/ru.lua",
+    ["busted.languages.ua"] = "src/languages/ua.lua",
   },
   install = {
     bin = {
