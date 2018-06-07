@@ -1,16 +1,16 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = 'busted'
-version = '2.0.rc9-0'
+version = '2.0.rc10-0'
 -- LuaDist source
 source = {
-  tag = "2.0.rc9-0",
+  tag = "2.0.rc10-0",
   url = "git://github.com/LuaDist-testing/busted.git"
 }
 -- Original source
 -- source = {
---   url = 'https://github.com/Olivine-Labs/busted/archive/v2.0.rc9-0.tar.gz',
---   dir = 'busted-2.0.rc9-0'
+--   url = 'https://github.com/Olivine-Labs/busted/archive/v2.0.rc10-0.tar.gz',
+--   dir = 'busted-2.0.rc10-0'
 -- }
 description = {
   summary = 'Elegant Lua unit testing.',
@@ -31,8 +31,7 @@ dependencies = {
   'luafilesystem >= 1.5.0',
   'dkjson >= 2.1.0',
   'say >= 1.3-0',
-  'luassert >= 1.7.7-0',
-  'ansicolors >= 1.0-1',
+  'luassert >= 1.7.8-0',
   'lua-term >= 0.1-1',
   'penlight >= 1.3.2-2',
   'mediator_lua >= 1.1.1-0',
