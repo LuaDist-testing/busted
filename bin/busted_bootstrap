@@ -1,9 +1,10 @@
 -- Busted command-line runner
-package.path = './?.lua;./lib/?.lua;./src/?.lua;'..package.path
-
-local busted = require 'busted'
 local cli = require 'cliargs'
 local lfs = require 'lfs'
+require 'luassert.all'
+
+busted = require 'busted.busted'
+require 'busted.interface'
 
 local function sub_dir(dir)
   local dirs = {dir}
@@ -28,6 +29,13 @@ local function sub_dir(dir)
   return coroutine.wrap(yieldtree)
 end
 
+local split = function(string, sep)
+  local sep, fields = sep or ".", {}
+  local pattern = ("([^%s]+)"):format(sep)
+  string:gsub(pattern, function(c) fields[#fields+1] = c end)
+  return fields
+end
+
 cli:set_name("busted")
 cli:add_flag("--version", "prints the program's version and exits")
 
@@ -39,7 +47,7 @@ cli:add_option("-d, --cwd=cwd", "path to current working directory")
 cli:add_option("-p, --pattern=pattern", "only run test files matching this pattern")
 cli:add_option("-t, --tags=tags", "only run tests with these #tags")
 
-cli:add_option("--lang", "language for error messages", "lang", "en")
+cli:add_option("--lang=LANG", "language for error messages", "lang", "en")
 
 cli:add_flag("-v", "verbose output of errors")
 cli:add_flag("-s, --enable-sound", "executes 'say' command if available")
@@ -49,7 +57,50 @@ cli:add_flag("--defer-print", "defer print to when test suite is complete")
 local args = cli:parse_args()
 
 if args then
-  set_busted_options({
+  if args.version then
+    return print("busted: version 1.1.0")
+  end
+
+  local root_file = args.ROOT or "spec"
+  local path = args["d"]
+
+  root_file = path..root_file
+
+  if args.lang then
+    if args.lang:match(".lua") then
+      lang = loadfile(path..args.lang)
+
+      if lang then
+        lang()
+      else
+        require('busted.languages.en')
+      end
+    else
+      require('busted.languages.'..args.lang)
+    end
+  else
+    require('busted.languages.en')
+  end
+
+  local output
+
+  if args.output_lib then
+    if args.output_lib:match(".lua") then
+      local o, err = loadfile(path..args.output_lib)
+
+      if not err then
+        output = o()()
+      else
+        output = require 'busted.output.utf_terminal'()
+      end
+    else
+      output = require('busted.output.'..args.output_lib)()
+    end
+  else
+    output = require 'busted.output.utf_terminal'()
+  end
+
+  busted.options = {
     verbose = args.v,
     color = not args.c,
     suppress_pending = args["suppress-pending"],
@@ -57,33 +108,28 @@ if args then
     utf = not args.u,
     sound = args.s,
     cwd = args.d,
-    tags = args.t,
-    output_lib = args.output_lib,
-    lang = args.lang,
-  })
-
-  local pattern = args.p ~= "" and args.p or '_spec.lua'
-  if args.version then
-    return print("busted: version 0.0.0")
-  end
-
-  local root_file = args.ROOT or "spec"
-  if args["d"] then
-    root_file = args["d"]..root_file
-  end
+    tags = split(args.t, ","),
+    output = output,
+    success_messages = success_messages or nil,
+    failure_messages = failure_messages or nil,
+  }
 
   local file = loadfile(root_file)
+
   if file then
     file()
   else
+    local pattern = args.p ~= "" and args.p or '_spec.lua'
+
     for filename,attr in sub_dir(root_file) do
       if attr.mode == 'file' then
-        local path,name,ext = string.match(filename, "(.-)([^\\/]-([^%.]+))$")
+        local path,name,ext = filename:match("(.-)([^\\/]-([^%.]+))$")
         if ext == 'lua' and name:find(pattern) then
           local file, err = loadfile(filename)
           if file then
-            file()
-          else
+            file, err = pcall(function() file() end)
+          end
+          if err then
             print("An error occurred while loading a test::"..err)
           end
         end
