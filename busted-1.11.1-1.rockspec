@@ -1,16 +1,16 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "busted"
-version = "1.11.0-1"
+version = "1.11.1-1"
 -- LuaDist source
 source = {
-  tag = "1.11.0-1",
+  tag = "1.11.1-1",
   url = "git://github.com/LuaDist-testing/busted.git"
 }
 -- Original source
 -- source = {
---    url = "https://github.com/Olivine-Labs/busted/archive/v1.11.0.tar.gz",
---    dir = "busted-1.11.0"
+--    url = "https://github.com/Olivine-Labs/busted/archive/v1.11.1.tar.gz",
+--    dir = "busted-1.11.1"
 -- }
 description = {
    summary = "Elegant Lua unit testing.",
@@ -55,7 +55,9 @@ build = {
    },
    install = {
       bin = {
-         busted = "bin/busted.lua"
+         busted = "bin/busted",
+         ['busted.bat'] = "bin/busted.bat",
+         busted_bootstrap = "bin/busted_bootstrap"
       }
    }
 }
