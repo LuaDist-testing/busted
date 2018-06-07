@@ -9,7 +9,10 @@ local is_windows = (pathseparator == "\\")
 local defaultoutput = "utf_terminal"
 if is_windows then defaultoutput = "plain_terminal" end
 local defaultpattern = '_spec.lua$'
+local defaultlua = 'luajit'
 local lpathprefix = "./src/?.lua;./src/?/?.lua;./src/?/init.lua"
+local ansicolors = require "ansicolors"
+local errors = {}
 
 local function sub_dir(dir)
   local dirs = {dir}
@@ -47,9 +50,9 @@ cli:add_flag("--version", "prints the program's version and exits")
 cli:optarg("ROOT", "test script file/folder. Folders will be traversed for any file that matches the --pattern option.", "spec", 1)
 
 cli:add_option("-o, --output=LIBRARY", "output library to load", defaultoutput)
-cli:add_option("-l, --lua=luajit", "path to the execution environment (lua or luajit)")
+cli:add_option("-l, --lua=luajit", "path to the execution environment (luajit or lua), picks first available", defaultlua)
 cli:add_option("-d, --cwd=cwd", "path to current working directory")
-cli:add_option("-p, --pattern=pattern", "only run test files matching this pattern", defaultpattern)
+cli:add_option("-p, --pattern=pattern", "only run test files matching the Lua pattern", defaultpattern)
 cli:add_option("-t, --tags=tags", "only run tests with these #tags")
 cli:add_option("-m, --lpath=path", "optional path to be prefixed to the Lua module search path", lpathprefix)
 cli:add_option("--lang=LANG", "language for error messages", "en")
@@ -94,6 +97,7 @@ if args then
   root_file = path..root_file
 
   if #args.lpath > 0 then
+    lpathprefix = args.lpath
     lpathprefix = lpathprefix:gsub("^%.[/%\\]", path )
     lpathprefix = lpathprefix:gsub(";%.[/%\\]", ";" .. path)
     package.path = (lpathprefix .. ";" .. package.path):gsub(";;",";")
@@ -104,11 +108,7 @@ if args then
       -- not a module name, but a filename has been provided.
       -- in this case the filename should contain the language settings for
       -- both 'busted' and 'luassert', differs from module setup.
-      local lang = loadfile(path..args.lang)
-
-      if lang then
-        lang()
-      end
+      assert(loadfile(path..args.lang))()
     else
       require('busted.languages.'..args.lang)
       require('luassert.languages.'..args.lang)
@@ -122,7 +122,7 @@ if args then
       local o, err = loadfile(path..args.output)
 
       if not err then
-        output = o()()
+        output = assert ( o() , "Unable to open output module" ) ()
       else
         output = require('busted.output.'..defaultoutput)()
       end
@@ -151,14 +151,13 @@ if args then
       file, err = pcall(function() file() end)
     end
     if err then
-      print("An error occurred while loading a test::"..err)
+      table.insert(errors, ansicolors("%{red}An error occurred while loading a test: %{blue}"..err))
     end
   end
 
   local mode, err = lfs.attributes(root_file, "mode")
   if mode == nil then
-    print("An error occurred while accessing file/directory: "..root_file .. "\n" .. err)
-    print("re-run with --help for usage")
+    table.insert(errors, ansicolors("%{red}An error occurred while accessing file/directory: %{blue}"..root_file .. "\n" .. err).."\n"..ansicolors("%{yellow}re-run with --help for usage"))
   else
     if mode == "file" then
       dosinglefile(root_file)
@@ -173,8 +172,14 @@ if args then
         end
       end
     end
+
     local status_string, failures = busted()
     print(status_string.."\n")
-    os.exit(failures)
+
+    for i, msg in pairs(errors) do
+      print(msg)
+    end
+
+    os.exit(failures + #errors)
   end
 end
