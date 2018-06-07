@@ -1,5 +1,3 @@
-local utils = require 'pl.utils'
-
 local ok, moonscript, line_tables, util = pcall(function()
   return require 'moonscript', require 'moonscript.line_tables', require 'moonscript.util'
 end)
@@ -81,7 +79,7 @@ local getTrace =  function(filename, info)
 end
 
 local rewriteMessage = function(filename, message)
-  local fname, line, msg = message:match('(.-):(%d+): (.*)')
+  local fname, line, msg = message:match('^([^\n]-):(%d+): (.*)')
   if not fname then
     return message
   end

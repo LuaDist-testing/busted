@@ -1,27 +1,25 @@
 local unpack = require 'busted.compatibility'.unpack
+local shuffle = require 'busted.utils'.shuffle
 
-math.randomseed(os.time())
-
-local function shuffle(t, seed)
-  if seed then math.randomseed(seed) end
-  local n = #t
-  while n >= 2 do
-    local k = math.random(n)
-    t[n], t[k] = t[k], t[n]
-    n = n - 1
-  end
-  return t
+local function sort(elements)
+  table.sort(elements, function(t1, t2)
+    if t1.name and t2.name then
+      return t1.name < t2.name
+    end
+    return t2.name ~= nil
+  end)
+  return elements
 end
 
-return function(busted)
-  local function remove(descriptors, element)
-    for _, descriptor in ipairs(descriptors) do
-      element.env[descriptor] = function(...)
-        error("'" .. descriptor .. "' not supported inside current context block", 2)
-      end
+local function remove(descriptors, element)
+  for _, descriptor in ipairs(descriptors) do
+    element.env[descriptor] = function(...)
+      error("'" .. descriptor .. "' not supported inside current context block", 2)
     end
   end
+end
 
+local function init(busted)
   local function exec(descriptor, element)
     if not element.env then element.env = {} end
 
@@ -85,7 +83,7 @@ return function(busted)
   local file = function(file)
     busted.publish({ 'file', 'start' }, file.name)
 
-    busted.wrapEnv(file.run)
+    busted.environment.wrap(file.run)
     if not file.env then file.env = {} end
 
     local randomize = busted.randomize
@@ -95,6 +93,8 @@ return function(busted)
       if randomize then
         file.randomseed = busted.randomseed
         shuffle(busted.context.children(file), busted.randomseed)
+      elseif busted.sort then
+        sort(busted.context.children(file))
       end
       if execAll('setup', file) then
         busted.execute(file)
@@ -119,6 +119,8 @@ return function(busted)
       if randomize then
         describe.randomseed = busted.randomseed
         shuffle(busted.context.children(describe), busted.randomseed)
+      elseif busted.sort then
+        sort(busted.context.children(describe))
       end
       if execAll('setup', describe) then
         busted.execute(describe)
@@ -178,11 +180,8 @@ return function(busted)
   busted.register('file', file)
 
   busted.register('describe', describe)
-  busted.register('context', describe)
 
   busted.register('it', it)
-  busted.register('spec', it)
-  busted.register('test', it)
 
   busted.register('pending', pending)
 
@@ -191,13 +190,38 @@ return function(busted)
   busted.register('before_each')
   busted.register('after_each')
 
-  assert = require 'luassert'
-  spy    = require 'luassert.spy'
-  mock   = require 'luassert.mock'
-  stub   = require 'luassert.stub'
+  busted.alias('context', 'describe')
+  busted.alias('spec', 'it')
+  busted.alias('test', 'it')
+
+  local assert = require 'luassert'
+  local spy    = require 'luassert.spy'
+  local mock   = require 'luassert.mock'
+  local stub   = require 'luassert.stub'
+
+  busted.environment.set('assert', assert)
+  busted.environment.set('spy', spy)
+  busted.environment.set('mock', mock)
+  busted.environment.set('stub', stub)
 
   busted.replaceErrorWithFail(assert)
   busted.replaceErrorWithFail(assert.True)
 
   return busted
 end
+
+return setmetatable({}, {
+  __call = function(self, busted)
+    init(busted)
+
+    return setmetatable(self, {
+      __index = function(self, descriptor)
+        return busted.executors[descriptor]
+      end,
+
+      __newindex = function(self, key, value)
+        error('Attempt to modify busted')
+      end
+    })
+  end
+})
