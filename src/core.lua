@@ -5,7 +5,7 @@ local tablex = require('pl.tablex')
 local busted = {}   -- exported module table
 busted._COPYRIGHT   = "Copyright (c) 2013 Olivine Labs, LLC."
 busted._DESCRIPTION = "A unit testing framework with a focus on being easy to use. http://www.olivinelabs.com/busted"
-busted._VERSION     = "Busted 1.6"
+busted._VERSION     = "Busted 1.7"
 
 -- set defaults
 busted.defaultoutput = path.is_windows and "plain_terminal" or "utf_terminal"
@@ -76,6 +76,9 @@ local function gettestfiles(root_file, pattern)
     filelist = tablex.filter(filelist, function(filename)
         return path.basename(filename):find(pattern)
       end )
+  else
+    filelist = {}
+    internal_error("Getting test files","No test files found for path '"..root_file.."' and pattern `"..pattern.."`. Please review your commandline, re-run with `--help` for usage.")
   end
   return filelist
 end
