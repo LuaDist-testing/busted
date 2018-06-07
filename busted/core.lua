@@ -31,6 +31,10 @@ local function hasToString(obj)
   return type(obj) == 'string' or (getmetatable(obj) or {}).__tostring
 end
 
+local function isCallable(obj)
+    return (type(obj) == 'function' or (getmetatable(obj) or {}).__call)
+end
+
 return function()
   local mediator = require 'mediator'()
 
@@ -41,19 +45,11 @@ return function()
   busted.context = root.ref()
 
   local environment = require 'busted.environment'(busted.context)
-  busted.environment = {
-    set = environment.set,
 
-    wrap = function(callable)
-      if (type(callable) == 'function' or getmetatable(callable).__call) then
-        -- prioritize __call if it exists, like in files
-        environment.wrap((getmetatable(callable) or {}).__call or callable)
-      end
-    end
-  }
-
+  busted.api = {}
   busted.executors = {}
   local executors = {}
+  local eattributes = {}
 
   busted.status = require 'busted.status'
 
@@ -99,6 +95,10 @@ return function()
     return mediator:subscribe(...)
   end
 
+  function busted.unsubscribe(...)
+    return mediator:removeSubscriber(...)
+  end
+
   function busted.getFile(element)
     local parent = busted.context.parent(element)
 
@@ -141,12 +141,19 @@ return function()
     throw(p)
   end
 
-  function busted.replaceErrorWithFail(callable)
+  function busted.bindfenv(callable, var, value)
     local env = {}
     local f = (getmetatable(callable) or {}).__call or callable
     setmetatable(env, { __index = getfenv(f) })
-    env.error = busted.fail
+    env[var] = value
     setfenv(f, env)
+  end
+
+  function busted.wrap(callable)
+    if isCallable(callable) then
+      -- prioritize __call if it exists, like in files
+      environment.wrap((getmetatable(callable) or {}).__call or callable)
+    end
   end
 
   function busted.safe(descriptor, run, element)
@@ -170,13 +177,37 @@ return function()
     return unpack(ret)
   end
 
-  function busted.register(descriptor, executor)
-    executors[descriptor] = executor
+  function busted.exportApi(key, value)
+    busted.api[key] = value
+  end
+
+  function busted.export(key, value)
+    busted.exportApi(key, value)
+    environment.set(key, value)
+  end
+
+  function busted.register(descriptor, executor, attributes)
+    local alias = nil
+    if type(executor) == 'string' then
+      alias = descriptor
+      descriptor = executor
+      executor = executors[descriptor]
+      attributes = attributes or eattributes[descriptor]
+      executors[alias] = executor
+      eattributes[alias] = attributes
+    else
+      if executor ~= nil and not isCallable(executor) then
+        attributes = executor
+        executor = nil
+      end
+      executors[descriptor] = executor
+      eattributes[descriptor] = attributes
+    end
 
     local publisher = function(name, fn)
       if not fn and type(name) == 'function' then
         fn = name
-        name = nil
+        name = alias
       end
 
       local trace
@@ -187,21 +218,23 @@ return function()
       end
 
       local publish = function(f)
-        busted.publish({ 'register', descriptor }, name, f, trace)
+        busted.publish({ 'register', descriptor }, name, f, trace, attributes)
       end
 
       if fn then publish(fn) else return publish end
     end
 
-    busted.executors[descriptor] = publisher
+    local edescriptor = alias or descriptor
+    busted.executors[edescriptor] = publisher
     if descriptor ~= 'file' then
-      environment.set(descriptor, publisher)
+      busted.export(edescriptor, publisher)
     end
 
-    busted.subscribe({ 'register', descriptor }, function(name, fn, trace)
+    busted.subscribe({ 'register', descriptor }, function(name, fn, trace, attributes)
       local ctx = busted.context.get()
       local plugin = {
         descriptor = descriptor,
+        attributes = attributes or {},
         name = name,
         run = fn,
         trace = trace
@@ -215,12 +248,6 @@ return function()
         ctx[descriptor][#ctx[descriptor]+1] = plugin
       end
     end)
-  end
-
-  function busted.alias(alias, descriptor)
-    local publisher = busted.executors[descriptor]
-    busted.executors[alias] = publisher
-    environment.set(alias, publisher)
   end
 
   function busted.execute(current)

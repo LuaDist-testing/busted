@@ -1,6 +1,6 @@
 local utils = require 'pl.utils'
 local path = require 'pl.path'
-local normpath = require 'busted.utils'.normpath
+local normpath = path.normpath
 local busted_cmd = path.is_windows and 'lua bin/busted' or 'bin/busted'
 local ditch = path.is_windows and ' 1> NUL 2>NUL' or ' > /dev/null 2>&1'
 
@@ -71,6 +71,9 @@ describe('Tests the busted command-line options', function()
     success, exitcode = execute(busted_cmd .. ' --pattern=_tags.lua$ --tags=tag1,tag2')
     assert.is_false(success)
     assert.is_equal(4, exitcode)
+    success, exitcode = execute(busted_cmd .. ' --pattern=_tags.lua$ --tags=tag1 --tags=tag2')
+    assert.is_false(success)
+    assert.is_equal(4, exitcode)
     error_end()
   end)
 
@@ -81,6 +84,9 @@ describe('Tests the busted command-line options', function()
     assert.is_true(success)
     assert.is_equal(0, exitcode)
     success, exitcode = execute(busted_cmd .. ' --pattern=_tags.lua$ --exclude-tags=tag2,dtag1,dtag2')
+    assert.is_false(success)
+    assert.is_equal(2, exitcode)
+    success, exitcode = execute(busted_cmd .. ' --pattern=_tags.lua$ --exclude-tags=tag2 --exclude-tags=dtag1,dtag2')
     assert.is_false(success)
     assert.is_equal(2, exitcode)
     error_end()
@@ -122,6 +128,9 @@ describe('Tests the busted command-line options', function()
     success, exitcode = execute(busted_cmd .. ' --pattern=_filter.lua$ --filter="pattern2"')
     assert.is_false(success)
     assert.is_equal(2, exitcode)
+    success, exitcode = execute(busted_cmd .. ' --pattern=_filter.lua$ --filter="pattern1" --filter="pattern2"')
+    assert.is_false(success)
+    assert.is_equal(4, exitcode)
     error_end()
   end)
 
@@ -134,6 +143,9 @@ describe('Tests the busted command-line options', function()
     success, exitcode = execute(busted_cmd .. ' --pattern=_filter.lua$ --filter-out="pattern%d"')
     assert.is_false(success)
     assert.is_equal(5, exitcode)
+    success, exitcode = execute(busted_cmd .. ' --pattern=_filter.lua$ --filter-out="patt1" --filter-out="patt2"')
+    assert.is_false(success)
+    assert.is_equal(3, exitcode)
     success, exitcode = execute(busted_cmd .. ' --pattern=_filter.lua$ --filter-out="patt.*(%d)"')
     assert.is_true(success)
     error_end()
@@ -159,19 +171,37 @@ describe('Tests the busted command-line options', function()
     error_end()
   end)
 
+  it('tests running with --lazy specified', function()
+    local success, exitcode
+    error_start()
+    success, exitcode = execute(busted_cmd .. ' --lazy --pattern=_tags.lua$')
+    assert.is_false(success)
+    assert.is_equal(7, exitcode)
+    success, exitcode = execute(busted_cmd .. ' --lazy --pattern=_tags.lua$ --tags=tag1')
+    assert.is_false(success)
+    assert.is_equal(2, exitcode)
+    success, exitcode = execute(busted_cmd .. ' --lazy --pattern=_tags.lua$ --tags=tag1,tag2')
+    assert.is_false(success)
+    assert.is_equal(3, exitcode)
+    success, exitcode = execute(busted_cmd .. ' --lazy --pattern=_tags.lua$ --tags=tag1 --tags=tag2')
+    assert.is_false(success)
+    assert.is_equal(3, exitcode)
+    error_end()
+  end)
+
   it('tests running with -l specified', function()
     local result = run(busted_cmd .. ' -l --pattern=cl_list.lua$')
-    local expected = './spec/cl_list.lua:4: Tests list test 1\n' ..
-                     './spec/cl_list.lua:7: Tests list test 2\n' ..
-                     './spec/cl_list.lua:10: Tests list test 3\n'
+    local expected = 'spec/cl_list.lua:4: Tests list test 1\n' ..
+                     'spec/cl_list.lua:7: Tests list test 2\n' ..
+                     'spec/cl_list.lua:10: Tests list test 3\n'
     assert.is_equal(normpath(expected), result)
   end)
 
   it('tests running with --list specified', function()
     local result = run(busted_cmd .. ' --list --pattern=cl_list.lua$')
-    local expected = './spec/cl_list.lua:4: Tests list test 1\n' ..
-                     './spec/cl_list.lua:7: Tests list test 2\n' ..
-                     './spec/cl_list.lua:10: Tests list test 3\n'
+    local expected = 'spec/cl_list.lua:4: Tests list test 1\n' ..
+                     'spec/cl_list.lua:7: Tests list test 2\n' ..
+                     'spec/cl_list.lua:10: Tests list test 3\n'
     assert.is_equal(normpath(expected), result)
   end)
 
@@ -264,15 +294,15 @@ describe('Tests failing tests through the commandline', function()
     error_start()
     success, exitcode = execute(busted_cmd .. ' --pattern=cl_failing_support.lua$')
     assert.is_false(success)
-    assert.is_equal(8, exitcode)
+    assert.is_equal(16, exitcode)
     error_end()
   end)
 
   it('tests failing support functions as errors', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_failing_support.lua$')
-    local _, numErrors = result:gsub('Error → .-\n','')
-    assert.is_equal(12, numErrors)
+    local _, numErrors = result:gsub('Error %-> .-\n','')
+    assert.is_equal(16, numErrors)
     error_end()
   end)
 end)
@@ -317,6 +347,15 @@ describe('Test busted running standalone', function()
     error_end()
   end)
 
+  it('tests running with --helper specified', function ()
+    local success, exitcode
+    error_start()
+    success, exitcode = execute('lua spec/cl_standalone.lua --helper=spec/cl_helper_script.lua -Xhelper "--fail-teardown,--fail-after-each"')
+    assert.is_false(success)
+    assert.is_equal(9, exitcode)
+    error_end()
+  end)
+
   it('tests running with --version specified', function()
     local success, exitcode
     success, exitcode = execute('lua spec/cl_standalone.lua --version')
@@ -353,7 +392,7 @@ describe('Tests distinguish between errors and failures', function()
   it('by detecting errors as test errors', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_errors.lua$ --tags=testerr')
-    local errmsg = result:match('(Error → .-)\n')
+    local errmsg = result:match('(Error %-> .-)\n')
     assert.is_truthy(errmsg)
     error_end()
   end)
@@ -361,7 +400,7 @@ describe('Tests distinguish between errors and failures', function()
   it('by detecting assert failures as test failures', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_two_failures.lua$')
-    local failmsg = result:match('(Failure → .-)\n')
+    local failmsg = result:match('(Failure %-> .-)\n')
     assert.is_truthy(failmsg)
     error_end()
   end)
@@ -369,7 +408,7 @@ describe('Tests distinguish between errors and failures', function()
   it('by detecting Lua runtime errors as test errors', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_errors.lua$ --tags=luaerr')
-    local failmsg = result:match('(Error → .-)\n')
+    local failmsg = result:match('(Error %-> .-)\n')
     assert.is_truthy(failmsg)
     error_end()
   end)
@@ -381,7 +420,7 @@ describe('Tests stack trackback', function()
     local result = run(busted_cmd .. ' --verbose --pattern=cl_errors.lua$ --tags=testerr')
     local errmsg = result:match('(stack traceback:.*)\n')
     local expected = [[stack traceback:
-	./spec/cl_errors.lua:6: in function <./spec/cl_errors.lua:5>
+	spec/cl_errors.lua:6: in function <spec/cl_errors.lua:5>
 ]]
     assert.is_equal(normpath(expected), errmsg)
     error_end()
@@ -392,7 +431,7 @@ describe('Tests stack trackback', function()
     local result = run(busted_cmd .. ' --verbose --pattern=cl_two_failures.lua$ --tags=err1')
     local errmsg = result:match('(stack traceback:.*)\n')
     local expected = [[stack traceback:
-	./spec/cl_two_failures.lua:6: in function <./spec/cl_two_failures.lua:5>
+	spec/cl_two_failures.lua:6: in function <spec/cl_two_failures.lua:5>
 ]]
     assert.is_equal(normpath(expected), errmsg)
     error_end()
@@ -403,7 +442,7 @@ describe('Tests stack trackback', function()
     local result = run(busted_cmd .. ' --verbose --pattern=cl_errors.lua$ --tags=luaerr')
     local errmsg = result:match('(stack traceback:.*)\n')
     local expected = [[stack traceback:
-	./spec/cl_errors.lua:11: in function <./spec/cl_errors.lua:9>
+	spec/cl_errors.lua:11: in function <spec/cl_errors.lua:9>
 ]]
     assert.is_equal(normpath(expected), errmsg)
     error_end()
@@ -414,10 +453,10 @@ describe('Tests error messages through the command line', function()
   it('when throwing errors in a test', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_errors.lua$ --tags=testerr')
-    local err = result:match('(Error → .-)\n')
-    local errmsg = result:match('\n(%.[/\\]spec[/\\].-)\n')
-    local expectedErr = "Error → ./spec/cl_errors.lua @ 5"
-    local expectedMsg = "./spec/cl_errors.lua:6: force an error"
+    local err = result:match('(Error %-> .-)\n')
+    local errmsg = result:match('\n(spec[/\\].-)\n')
+    local expectedErr = "Error -> spec/cl_errors.lua @ 5"
+    local expectedMsg = "spec/cl_errors.lua:6: force an error"
     assert.is_equal(normpath(expectedErr), err)
     assert.is_equal(normpath(expectedMsg), errmsg)
     error_end()
@@ -426,8 +465,8 @@ describe('Tests error messages through the command line', function()
   it('when throwing an error table', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --tags=table --pattern=cl_error_messages.lua$')
-    local errmsg = result:match('\n(%.[/\\]spec[/\\].-)\n')
-    local expected = './spec/cl_error_messages.lua:5: {'
+    local errmsg = result:match('\n(spec[/\\].-)\n')
+    local expected = 'spec/cl_error_messages.lua:5: {'
     assert.is_equal(normpath(expected), errmsg)
     error_end()
   end)
@@ -435,8 +474,8 @@ describe('Tests error messages through the command line', function()
   it('when throwing a nil error', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --tags=nil --pattern=cl_error_messages.lua$')
-    local errmsg = result:match('\n(%.[/\\]spec[/\\].-)\n')
-    local expected = './spec/cl_error_messages.lua:9: Nil error'
+    local errmsg = result:match('\n(spec[/\\].-)\n')
+    local expected = 'spec/cl_error_messages.lua:9: Nil error'
     assert.is_equal(normpath(expected), errmsg)
     error_end()
   end)
@@ -444,8 +483,8 @@ describe('Tests error messages through the command line', function()
   it('when throwing an error table with __tostring', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --tags=tostring --pattern=cl_error_messages.lua$')
-    local errmsg = result:match('\n(%.[/\\]spec[/\\].-)\n')
-    local expected = './spec/cl_error_messages.lua:17: {}'
+    local errmsg = result:match('\n(spec[/\\].-)\n')
+    local expected = 'spec/cl_error_messages.lua:17: {}'
     assert.is_equal(normpath(expected), errmsg)
     error_end()
   end)
@@ -453,8 +492,8 @@ describe('Tests error messages through the command line', function()
   it('when throwing after a pcall', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --tags=pcall --pattern=cl_error_messages.lua$')
-    local errmsg = result:match('\n(%.[/\\]spec[/\\].-)\n')
-    local expected = './spec/cl_error_messages.lua:22: error after pcall'
+    local errmsg = result:match('\n(spec[/\\].-)\n')
+    local expected = 'spec/cl_error_messages.lua:22: error after pcall'
     assert.is_equal(normpath(expected), errmsg)
     error_end()
   end)
@@ -462,8 +501,8 @@ describe('Tests error messages through the command line', function()
   it('when running a non-compiling testfile', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_compile_fail.lua$')
-    local errmsg = result:match('(Error → .-:%d+:) ')
-    local expected = "Error → ./spec/cl_compile_fail.lua:3:"
+    local errmsg = result:match('(Error %-> .-:%d+:) ')
+    local expected = "Error -> spec/cl_compile_fail.lua:3:"
     assert.is_equal(normpath(expected), errmsg)
     error_end()
   end)
@@ -471,10 +510,10 @@ describe('Tests error messages through the command line', function()
   it('when a testfile throws errors', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_execute_fail.lua$')
-    local err = result:match('(Error → .-)\n')
-    local errmsg = result:match('\n(%.[/\\]spec[/\\]cl_execute_fail%.lua:%d+:.-)\n')
-    local expectedErr = 'Error → ./spec/cl_execute_fail.lua @ 4'
-    local expectedMsg = './spec/cl_execute_fail.lua:4: This compiles fine, but throws an error when being run'
+    local err = result:match('(Error %-> .-)\n')
+    local errmsg = result:match('\n(spec[/\\]cl_execute_fail%.lua:%d+:.-)\n')
+    local expectedErr = 'Error -> spec/cl_execute_fail.lua @ 4'
+    local expectedMsg = 'spec/cl_execute_fail.lua:4: This compiles fine, but throws an error when being run'
     assert.is_equal(normpath(expectedErr), err)
     assert.is_equal(normpath(expectedMsg), errmsg)
     error_end()
@@ -482,20 +521,20 @@ describe('Tests error messages through the command line', function()
 
   it('when output library not found', function()
     error_start()
-    local result = run(busted_cmd .. ' --pattern=cl_two_failures.lua$ --output=not_found_here')
+    local result = run(busted_cmd .. ' --pattern=cl_two_failures.lua$ --output=not_found_here 2>&1')
     local errmsg = result:match('(.-)\n')
-    local expected = 'Error: Cannot load output library: not_found_here'
+    local expected = 'busted: error: Cannot load output library: not_found_here'
     assert.is_equal(expected, errmsg)
     error_end()
   end)
 
   it('when helper script not found', function()
     error_start()
-    local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_two_failures.lua$ --helper=not_found_here')
-    local err = result:match('Error → .-:%d+: (.-)\n')
+    local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_two_failures.lua$ --helper=not_found_here 2>&1')
+    local err = result:match('Error %-> .-:%d+: (.-)\n')
     local errmsg = result:match('(.-)\n')
     local expectedErr = "module 'not_found_here' not found:"
-    local expectedMsg = 'Error: Cannot load helper script: not_found_here'
+    local expectedMsg = 'busted: error: Cannot load helper script: not_found_here'
     assert.is_equal(expectedErr, err)
     assert.is_equal(expectedMsg, errmsg)
     error_end()
@@ -503,11 +542,11 @@ describe('Tests error messages through the command line', function()
 
   it('when helper lua script not found', function()
     error_start()
-    local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_two_failures.lua$ --helper=not_found_here.lua')
-    local err = result:match('Error → (.-)\n')
+    local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_two_failures.lua$ --helper=not_found_here.lua 2>&1')
+    local err = result:match('Error %-> (.-)\n')
     local errmsg = result:match('(.-)\n')
-    local expectedErr = 'cannot open ./not_found_here.lua: No such file or directory'
-    local expectedMsg = 'Error: Cannot load helper script: not_found_here.lua'
+    local expectedErr = 'cannot open not_found_here.lua: No such file or directory'
+    local expectedMsg = 'busted: error: Cannot load helper script: not_found_here.lua'
     assert.is_equal(normpath(expectedErr), err)
     assert.is_equal(expectedMsg, errmsg)
     error_end()
@@ -516,21 +555,24 @@ describe('Tests error messages through the command line', function()
   it('when no test files matching Lua pattern', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=this_filename_does_simply_not_exist$')
-    local errmsg = result:match('Error → (.-)\n')
+    local errmsg = result:match('Error %-> (.-)\n')
     local expected = 'No test files found matching Lua pattern: this_filename_does_simply_not_exist$'
     assert.is_equal(expected, errmsg)
     error_end()
   end)
 end)
 
-describe('Tests moonscript error messages through the command line', function()
+local has_moon = pcall(require, 'moonscript')
+local describe_moon = (has_moon and describe or pending)
+
+describe_moon('Tests moonscript error messages through the command line', function()
   it('when assertion fails', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_moonscript_error_messages.moon$ --tags=fail')
-    local err = result:match('(Failure → .-)\n')
-    local errmsg = result:match('\n(%.[/\\]spec[/\\].-)\n')
-    local expectedErr = "Failure → ./spec/cl_moonscript_error_messages.moon @ 4"
-    local expectedMsg = "./spec/cl_moonscript_error_messages.moon:5: Expected objects to be equal."
+    local err = result:match('(Failure %-> .-)\n')
+    local errmsg = result:match('\n(spec[/\\].-)\n')
+    local expectedErr = "Failure -> spec/cl_moonscript_error_messages.moon @ 4"
+    local expectedMsg = "spec/cl_moonscript_error_messages.moon:5: Expected objects to be equal."
     assert.is_equal(normpath(expectedErr), err)
     assert.is_equal(normpath(expectedMsg), errmsg)
     error_end()
@@ -539,10 +581,10 @@ describe('Tests moonscript error messages through the command line', function()
   it('when throwing string errors', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_moonscript_error_messages.moon$ --tags=string')
-    local err = result:match('(Error → .-)\n')
-    local errmsg = result:match('\n(%.[/\\]spec[/\\].-)\n')
-    local expectedErr = "Error → ./spec/cl_moonscript_error_messages.moon @ 16"
-    local expectedMsg = "./spec/cl_moonscript_error_messages.moon:17: error message"
+    local err = result:match('(Error %-> .-)\n')
+    local errmsg = result:match('\n(spec[/\\].-)\n')
+    local expectedErr = "Error -> spec/cl_moonscript_error_messages.moon @ 16"
+    local expectedMsg = "spec/cl_moonscript_error_messages.moon:17: error message"
     assert.is_equal(normpath(expectedErr), err)
     assert.is_equal(normpath(expectedMsg), errmsg)
     error_end()
@@ -551,8 +593,8 @@ describe('Tests moonscript error messages through the command line', function()
   it('when throwing an error table', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --tags=table --pattern=cl_moonscript_error_messages.moon$')
-    local errmsg = result:match('\n(%.[/\\]spec[/\\].-)\n')
-    local expected = './spec/cl_moonscript_error_messages.moon:9: {'
+    local errmsg = result:match('\n(spec[/\\].-)\n')
+    local expected = 'spec/cl_moonscript_error_messages.moon:9: {'
     assert.is_equal(normpath(expected), errmsg)
     error_end()
   end)
@@ -560,8 +602,8 @@ describe('Tests moonscript error messages through the command line', function()
   it('when throwing a nil error', function()
     error_start()
     local result = run(busted_cmd .. ' --output=plainTerminal --tags=nil --pattern=cl_moonscript_error_messages.moon$')
-    local errmsg = result:match('\n(%.[/\\]spec[/\\].-)\n')
-    local expected = './spec/cl_moonscript_error_messages.moon:13: Nil error'
+    local errmsg = result:match('\n(spec[/\\].-)\n')
+    local expected = 'spec/cl_moonscript_error_messages.moon:13: Nil error'
     assert.is_equal(normpath(expected), errmsg)
     error_end()
   end)
@@ -582,7 +624,7 @@ describe('Tests pending through the commandline', function()
     local result = run(busted_cmd .. ' --output=plainTerminal --pattern=cl_pending.lua$')
     local line1 = result:match('.-\n')
     local _, pendingDots = line1:gsub('%.', '')
-    local _, numPending = result:gsub('Pending → .-\n', '')
+    local _, numPending = result:gsub('Pending %-> .-\n', '')
     assert.is_equal(2, pendingDots)
     assert.is_equal(2, numPending)
     error_end()
@@ -593,7 +635,7 @@ describe('Tests pending through the commandline', function()
     local result = run(busted_cmd .. ' --output=plainTerminal --suppress-pending --pattern=cl_pending.lua$')
     local line1 = result:match('.-\n')
     local _, pendingDots = line1:gsub('%.', '')
-    local _, numPending = result:gsub('Pending → .-\n', '')
+    local _, numPending = result:gsub('Pending %-> .-\n', '')
     assert.is_equal(0, pendingDots)
     assert.is_equal(0, numPending)
     error_end()
@@ -622,7 +664,7 @@ describe('Tests random seed through the commandline', function()
   it('test failure outputs random seed value', function()
     error_start()
     local result = run(busted_cmd .. ' --seed=789 --pattern=cl_random_seed.lua$')
-    local seed = result:match('Random Seed: (%d+)\n')
+    local seed = result:match('Random seed: (%d+)\n')
     assert.is_equal(789, tonumber(seed))
     error_end()
   end)
@@ -630,7 +672,7 @@ describe('Tests random seed through the commandline', function()
   it('test non-randomized failure does not output seed value', function()
     error_start()
     local result = run(busted_cmd .. ' --seed=789 --pattern=cl_two_failures.lua$')
-    local seed = result:match('Random Seed:')
+    local seed = result:match('Random seed:')
     assert.is_equal(nil, seed)
     error_end()
   end)
@@ -704,6 +746,17 @@ describe('Tests no-recursive commandline option', function()
   end)
 end)
 
+describe('Tests no-auto-insulate commandline option', function()
+  it('does not insulate test files', function()
+    local success, exitcode
+    error_start()
+    success, exitcode = execute(busted_cmd .. ' --no-auto-insulate --pattern=insulate_file.*.lua$')
+    assert.is_false(success)
+    assert.is_equal(1, exitcode)
+    error_end()
+  end)
+end)
+
 describe('Tests Xoutput commandline option', function()
   it('forwards no options to output handler when no options specified', function()
     local result = run(busted_cmd .. ' --output=spec/cl_output_handler.lua --pattern=cl_success.lua$')
@@ -719,6 +772,12 @@ describe('Tests Xoutput commandline option', function()
 
   it('forwards multiple options to output handler', function()
     local result = run(busted_cmd .. ' --output=spec/cl_output_handler.lua -Xoutput "--time,--time-format=!%H:%M:%S" --pattern=cl_success.lua$')
+    local timestamp = result:match('^%[(.-)]')
+    assert.is_equal('10:17:36', timestamp)
+  end)
+
+  it('forwards multiple options to output handler using multiple -Xoutput', function()
+    local result = run(busted_cmd .. ' --output=spec/cl_output_handler.lua -Xoutput "--time" -Xoutput "--time-format=!%H:%M:%S" --pattern=cl_success.lua$')
     local timestamp = result:match('^%[(.-)]')
     assert.is_equal('10:17:36', timestamp)
   end)
@@ -740,5 +799,37 @@ describe('Tests Xhelper commandline option', function()
     local success, exitcode = execute(busted_cmd .. ' --helper=spec/cl_helper_script.lua -Xhelper "--fail-before-each,--fail-after-each" --pattern=cl_success.lua$')
     assert.is_false(success)
     assert.is_equal(2, exitcode)
+  end)
+
+  it('forwards multiple options to helper script using multiple -Xhelper', function()
+    local success, exitcode = execute(busted_cmd .. ' --helper=spec/cl_helper_script.lua -Xhelper "--fail-before-each" -Xhelper "--fail-after-each" --pattern=cl_success.lua$')
+    assert.is_false(success)
+    assert.is_equal(2, exitcode)
+  end)
+end)
+
+describe('Tests helper script', function()
+  it('can add setup to test suite', function()
+    local success, exitcode = execute(busted_cmd .. ' --helper=spec/cl_helper_script.lua -Xhelper "--fail-setup" --pattern=cl_two_failures.lua$')
+    assert.is_false(success)
+    assert.is_equal(1, exitcode)
+  end)
+
+  it('can add teardown to test suite', function()
+    local success, exitcode = execute(busted_cmd .. ' --helper=spec/cl_helper_script.lua -Xhelper "--fail-teardown" --pattern=cl_two_failures.lua$')
+    assert.is_false(success)
+    assert.is_equal(3, exitcode)
+  end)
+
+  it('runs setup/teardown for mutiple runs', function()
+    local success, exitcode = execute(busted_cmd .. ' --helper=spec/cl_helper_script.lua -Xhelper "--fail-setup,--fail-teardown" --pattern=cl_success.lua$ --repeat=2')
+    assert.is_false(success)
+    assert.is_equal(4, exitcode)
+  end)
+
+  it('runs setup/teardown for mutiple runs with --lazy', function()
+    local success, exitcode = execute(busted_cmd .. ' --lazy --helper=spec/cl_helper_script.lua -Xhelper "--fail-setup,--fail-teardown" --pattern=cl_success.lua$ --repeat=2')
+    assert.is_false(success)
+    assert.is_equal(4, exitcode)
   end)
 end)

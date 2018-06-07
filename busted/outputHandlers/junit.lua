@@ -2,8 +2,9 @@ local xml = require 'pl.xml'
 local socket = require("socket")
 local string = require("string")
 
-return function(options, busted)
-  local handler = require 'busted.outputHandlers.base'(busted)
+return function(options)
+  local busted = require 'busted'
+  local handler = require 'busted.outputHandlers.base'()
   local top = {
     start_time = socket.gettime(),
     xml_doc = xml.new('testsuites', {
@@ -14,6 +15,7 @@ return function(options, busted)
     })
   }
   local stack = {}
+  local testcase_node
   local testStartTime
 
   handler.suiteStart = function(count, total)
@@ -60,15 +62,11 @@ return function(options, busted)
   end
 
   local function testStatus(element, parent, message, status, trace)
-    local testcase_node = xml.new('testcase', {
-      classname = element.trace.short_src .. ':' .. element.trace.currentline,
-      name = handler.getFullName(element),
-      time = elapsed(testStartTime)
-    })
-    top.xml_doc:add_direct_child(testcase_node)
-
     if status ~= 'success' then
       testcase_node:addtag(status)
+      if status ~= 'pending' and parent and parent.randomseed then
+        testcase_node:text('Random seed: ' .. parent.randomseed .. '\n')
+      end
       if message then testcase_node:text(message) end
       if trace and trace.traceback then testcase_node:text(trace.traceback) end
       testcase_node:up()
@@ -77,12 +75,19 @@ return function(options, busted)
 
   handler.testStart = function(element, parent)
     testStartTime = socket.gettime()
+    testcase_node = xml.new('testcase', {
+      classname = element.trace.short_src .. ':' .. element.trace.currentline,
+      name = handler.getFullName(element),
+    })
+    top.xml_doc:add_direct_child(testcase_node)
 
     return nil, true
   end
 
   handler.testEnd = function(element, parent, status)
     top.xml_doc.attr.tests = top.xml_doc.attr.tests + 1
+    testcase_node.time = elapsed(testStartTime)
+    testStartTime = nil
 
     if status == 'success' then
       testStatus(element, parent, nil, 'success')

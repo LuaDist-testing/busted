@@ -18,10 +18,12 @@ return function()
       else
         return config, 'Task `' .. run .. '` not found, or not a table.'
       end
+    elseif type(configFile.default) == 'table' then
+      config = tablex.merge(configFile.default, config, true)
     end
 
-    if type(configFile.default) == 'table' then
-      config = tablex.merge(configFile.default, config, true)
+    if type(configFile._all) == 'table' then
+      config = tablex.merge(configFile._all, config, true)
     end
 
     config = tablex.merge(defaults, config, true)

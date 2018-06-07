@@ -1,6 +1,6 @@
 local s = require 'say'
 
-return function(busted, loaders, options)
+return function(busted, loaders)
   local path = require 'pl.path'
   local dir = require 'pl.dir'
   local tablex = require 'pl.tablex'
@@ -12,7 +12,7 @@ return function(busted, loaders, options)
     fileLoaders[#fileLoaders+1] = loader
   end
 
-  local getTestFiles = function(rootFile, pattern)
+  local getTestFiles = function(rootFile, pattern, options)
     local fileList
 
     if path.isfile(rootFile) then
@@ -39,6 +39,14 @@ return function(busted, loaders, options)
     return fileList
   end
 
+  local getAllTestFiles = function(rootFiles, pattern, options)
+    local fileList = {}
+    for _, root in ipairs(rootFiles) do
+      tablex.insertvalues(fileList, getTestFiles(root, pattern, options))
+    end
+    return fileList
+  end
+
   -- runs a testfile, loading its tests
   local loadTestFile = function(busted, filename)
     for _, v in pairs(fileLoaders) do
@@ -48,8 +56,8 @@ return function(busted, loaders, options)
     end
   end
 
-  local loadTestFiles = function(rootFile, pattern, loaders)
-    local fileList = getTestFiles(rootFile, pattern)
+  local loadTestFiles = function(rootFiles, pattern, options)
+    local fileList = getAllTestFiles(rootFiles, pattern, options)
 
     if options.shuffle then
       shuffle(fileList, options.seed)
@@ -58,7 +66,7 @@ return function(busted, loaders, options)
     end
 
     for i, fileName in ipairs(fileList) do
-      local testFile, getTrace, rewriteMessage = loadTestFile(busted, fileName, loaders)
+      local testFile, getTrace, rewriteMessage = loadTestFile(busted, fileName)
 
       if testFile then
         local file = setmetatable({
@@ -79,6 +87,6 @@ return function(busted, loaders, options)
     return fileList
   end
 
-  return loadTestFiles, loadTestFile, getTestFiles
+  return loadTestFiles, loadTestFile, getAllTestFiles
 end
 

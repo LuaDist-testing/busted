@@ -1,8 +1,9 @@
 local s = require 'say'
 local pretty = require 'pl.pretty'
 
-return function(options, busted)
-  local handler = require 'busted.outputHandlers.base'(busted)
+return function(options)
+  local busted = require 'busted'
+  local handler = require 'busted.outputHandlers.base'()
 
   local successDot =  '+'
   local failureDot =  '-'
@@ -12,7 +13,7 @@ return function(options, busted)
   local pendingDescription = function(pending)
     local name = pending.name
 
-    local string = s('output.pending') .. ' → ' ..
+    local string = s('output.pending') .. ' -> ' ..
       pending.trace.short_src .. ' @ ' ..
       pending.trace.currentline  ..
       '\n' .. name
@@ -27,22 +28,22 @@ return function(options, busted)
   end
 
   local failureMessage = function(failure)
-    local string
+    local string = failure.randomseed and ('Random seed: ' .. failure.randomseed .. '\n') or ''
     if type(failure.message) == 'string' then
-      string = failure.message
+      string = string .. failure.message
     elseif failure.message == nil then
-      string = 'Nil error'
+      string = string .. 'Nil error'
     else
-      string = pretty.write(failure.message)
+      string = string .. pretty.write(failure.message)
     end
 
     return string
   end
 
   local failureDescription = function(failure, isError)
-    local string = s('output.failure') .. ' → '
+    local string = s('output.failure') .. ' -> '
     if isError then
-      string = s('output.error') .. ' → '
+      string = s('output.error') .. ' -> '
     end
 
     if not failure.element.trace or not failure.element.trace.short_src then
@@ -132,6 +133,8 @@ return function(options, busted)
     local runString = (total > 1 and '\nRepeating all tests (run %d of %d) . . .\n\n' or '')
     io.write(runString:format(count, total))
     io.flush()
+
+    return nil, true
   end
 
   handler.suiteEnd = function()

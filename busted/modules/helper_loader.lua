@@ -1,18 +1,21 @@
-local utils = require 'busted.utils'
+local path = require 'pl.path'
 local hasMoon, moonscript = pcall(require, 'moonscript')
 
 return function()
-  local loadHelper = function(helper, hpath, options, busted)
+  local loadHelper = function(busted, helper, options)
+    local old_arg = arg
     local success, err = pcall(function()
       arg = options.arguments
       if helper:match('%.lua$') then
-        dofile(utils.normpath(hpath))
+        dofile(path.normpath(helper))
       elseif hasMoon and helper:match('%.moon$') then
-        moonscript.dofile(utils.normpath(hpath))
+        moonscript.dofile(path.normpath(helper))
       else
         require(helper)
       end
     end)
+
+    arg = old_arg
 
     if not success then
       busted.publish({ 'error', 'helper' }, { descriptor = 'helper', name = helper }, nil, err, {})
