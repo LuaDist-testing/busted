@@ -30,13 +30,13 @@ local function init(busted)
 
     block.rejectAll(element)
     element.env.finally = function(fn) finally = fn end
-    element.env.pending = function(msg) busted.pending(msg) end
+    element.env.pending = busted.pending
 
     local pass, ancestor = block.execAll('before_each', parent, true)
 
     if pass then
       local status = busted.status('success')
-      if busted.safe_publish('it', { 'test', 'start' }, element, parent) then
+      if busted.safe_publish('test', { 'test', 'start' }, element, parent) then
         status:update(busted.safe('it', element.run, element))
         if finally then
           block.reject('pending', element)
@@ -45,7 +45,7 @@ local function init(busted)
       else
         status = busted.status('error')
       end
-      busted.safe_publish('it', { 'test', 'end' }, element, parent, tostring(status))
+      busted.safe_publish('test', { 'test', 'end' }, element, parent, tostring(status))
     end
 
     block.dexecAll('after_each', ancestor, true)
@@ -85,15 +85,19 @@ local function init(busted)
   busted.register('spec', 'it')
   busted.register('test', 'it')
 
+  busted.hide('file')
+
   local assert = require 'luassert'
   local spy    = require 'luassert.spy'
   local mock   = require 'luassert.mock'
   local stub   = require 'luassert.stub'
+  local match  = require 'luassert.match'
 
   busted.export('assert', assert)
   busted.export('spy', spy)
   busted.export('mock', mock)
   busted.export('stub', stub)
+  busted.export('match', match)
 
   busted.exportApi('publish', busted.publish)
   busted.exportApi('subscribe', busted.subscribe)
@@ -101,7 +105,11 @@ local function init(busted)
 
   busted.exportApi('bindfenv', busted.bindfenv)
   busted.exportApi('fail', busted.fail)
+  busted.exportApi('gettime', busted.gettime)
+  busted.exportApi('monotime', busted.monotime)
+  busted.exportApi('sleep', busted.sleep)
   busted.exportApi('parent', busted.context.parent)
+  busted.exportApi('children', busted.context.children)
   busted.exportApi('version', busted.version)
 
   busted.bindfenv(assert, 'error', busted.fail)

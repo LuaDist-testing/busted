@@ -1,12 +1,11 @@
 local xml = require 'pl.xml'
-local socket = require("socket")
 local string = require("string")
 
 return function(options)
   local busted = require 'busted'
   local handler = require 'busted.outputHandlers.base'()
   local top = {
-    start_time = socket.gettime(),
+    start_tick = busted.monotime(),
     xml_doc = xml.new('testsuites', {
       tests = 0,
       errors = 0,
@@ -16,48 +15,65 @@ return function(options)
   }
   local stack = {}
   local testcase_node
-  local testStartTime
+  if 'table' == type(options.arguments) then
+    --the first argument should be the name of the xml file.
+    output_file_name = options.arguments[1]
+  end
 
   handler.suiteStart = function(suite, count, total)
-    local suite = {
-      start_time = socket.gettime(),
+    local suite_xml = {
+      start_tick = suite.starttick,
       xml_doc = xml.new('testsuite', {
         name = 'Run ' .. count .. ' of ' .. total,
         tests = 0,
         errors = 0,
         failures = 0,
         skip = 0,
-        timestamp = os.date('!%Y-%m-%dT%T'),
+        timestamp = os.date('!%Y-%m-%dT%H:%M:%S'),
       })
     }
-    top.xml_doc:add_direct_child(suite.xml_doc)
+    top.xml_doc:add_direct_child(suite_xml.xml_doc)
     table.insert(stack, top)
-    top = suite
+    top = suite_xml
 
     return nil, true
   end
 
+  local function formatDuration(duration)
+    return string.format("%.2f", duration)
+  end
+
   local function elapsed(start_time)
-    return string.format("%.2f", (socket.gettime() - start_time))
+    return formatDuration(busted.monotime() - start_time)
   end
 
   handler.suiteEnd = function(suite, count, total)
-    local suite = top
-    suite.xml_doc.attr.time = elapsed(suite.start_time)
+    local suite_xml = top
+    suite_xml.xml_doc.attr.time = formatDuration(suite.duration)
 
     top = table.remove(stack)
-    top.xml_doc.attr.tests = top.xml_doc.attr.tests + suite.xml_doc.attr.tests
-    top.xml_doc.attr.errors = top.xml_doc.attr.errors + suite.xml_doc.attr.errors
-    top.xml_doc.attr.failures = top.xml_doc.attr.failures + suite.xml_doc.attr.failures
-    top.xml_doc.attr.skip = top.xml_doc.attr.skip + suite.xml_doc.attr.skip
+    top.xml_doc.attr.tests = top.xml_doc.attr.tests + suite_xml.xml_doc.attr.tests
+    top.xml_doc.attr.errors = top.xml_doc.attr.errors + suite_xml.xml_doc.attr.errors
+    top.xml_doc.attr.failures = top.xml_doc.attr.failures + suite_xml.xml_doc.attr.failures
+    top.xml_doc.attr.skip = top.xml_doc.attr.skip + suite_xml.xml_doc.attr.skip
 
     return nil, true
   end
 
   handler.exit = function()
-    top.xml_doc.attr.time = elapsed(top.start_time)
-    print(xml.tostring(top.xml_doc, '', '\t', nil, false))
-
+    top.xml_doc.attr.time = elapsed(top.start_tick)
+    local output_string = xml.tostring(top.xml_doc, '', '\t', nil, false)
+    local file
+    if 'string' == type(output_file_name) then
+      file = io.open(output_file_name, 'w+b' )
+    end
+    if file then
+      file:write(output_string)
+      file:write('\n')
+      file:close()
+    else
+      print(output_string)
+    end
     return nil, true
   end
 
@@ -74,7 +90,6 @@ return function(options)
   end
 
   handler.testStart = function(element, parent)
-    testStartTime = socket.gettime()
     testcase_node = xml.new('testcase', {
       classname = element.trace.short_src .. ':' .. element.trace.currentline,
       name = handler.getFullName(element),
@@ -86,8 +101,7 @@ return function(options)
 
   handler.testEnd = function(element, parent, status)
     top.xml_doc.attr.tests = top.xml_doc.attr.tests + 1
-    testcase_node.time = elapsed(testStartTime)
-    testStartTime = nil
+    testcase_node.time = formatDuration(element.duration)
 
     if status == 'success' then
       testStatus(element, parent, nil, 'success')

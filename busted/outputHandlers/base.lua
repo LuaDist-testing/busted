@@ -1,5 +1,3 @@
-local socket = require 'socket'
-
 return function()
   local busted = require 'busted'
   local handler = {
@@ -53,33 +51,40 @@ return function()
   end
 
   handler.format = function(element, parent, message, debug, isError)
+    local function copyElement(e)
+      local copy = {}
+      for k,v in next, e do
+        if type(v) ~= 'function' and k ~= 'env' then
+          copy[k] = v
+        end
+      end
+      return copy
+    end
+
     local formatted = {
       trace = debug or element.trace,
-      element = {
-        name = element.name,
-        descriptor = element.descriptor,
-        attributes = element.attributes,
-        trace = element.trace or debug,
-      },
+      element = copyElement(element),
       name = handler.getFullName(element),
       message = message,
       randomseed = parent and parent.randomseed,
       isError = isError
     }
+    formatted.element.trace = element.trace or debug
 
     return formatted
   end
 
   handler.getDuration = function()
-    if not handler.endTime or not handler.startTime then
+    if not handler.endTick or not handler.startTick then
       return 0
     end
 
-    return handler.endTime - handler.startTime
+    return handler.endTick - handler.startTick
   end
 
-  handler.baseSuiteStart = function()
-    handler.startTime = socket.gettime()
+  handler.baseSuiteStart = function(suite)
+    handler.startTick = suite.starttick
+    handler.startTime = suite.starttime
     return nil, true
   end
 
@@ -97,8 +102,9 @@ return function()
     return nil, true
   end
 
-  handler.baseSuiteEnd = function()
-    handler.endTime = socket.gettime()
+  handler.baseSuiteEnd = function(suite)
+    handler.endTick = suite.endtick
+    handler.endTime = suite.endtime
     return nil, true
   end
 

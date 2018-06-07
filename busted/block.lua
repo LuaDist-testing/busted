@@ -14,20 +14,21 @@ end
 
 return function(busted)
   local block = {}
+  local root = busted.context.get()
 
   function block.reject(descriptor, element)
-    local env = getfenv(element.run)
-    if env[descriptor] then
-      element.env[descriptor] = function(...)
-        error("'" .. descriptor .. "' not supported inside current context block", 2)
-      end
+    element.env[descriptor] = function(...)
+      error("'" .. descriptor .. "' not supported inside current context block", 2)
     end
   end
 
   function block.rejectAll(element)
+    local env = getfenv(element.run)
     block.reject('randomize', element)
     for descriptor, _ in pairs(busted.executors) do
-      block.reject(descriptor, element)
+      if root.env[descriptor] and (env ~= _G and env[descriptor] or rawget(env, descriptor)) then
+        block.reject(descriptor, element)
+      end
     end
   end
 
@@ -134,14 +135,18 @@ return function(busted)
     if not element.env then element.env = {} end
 
     local randomize = busted.randomize
+    local randomseed = busted.randomseed
     element.env.randomize = function(...)
       randomize = (select('#', ...) == 0 or ...)
+      if randomize then
+        randomseed = tonumber(({...})[1]) or tonumber(({...})[2]) or randomseed
+      end
     end
 
     if busted.safe(descriptor, element.run, element):success() then
       if randomize then
-        element.randomseed = busted.randomseed
-        shuffle(busted.context.children(element), busted.randomseed)
+        element.randomseed = randomseed
+        shuffle(busted.context.children(element), randomseed)
       elseif busted.sort then
         sort(busted.context.children(element))
       end

@@ -5,13 +5,15 @@ local tablex = require 'pl.tablex'
 local term = require 'term'
 local utils = require 'busted.utils'
 local exit = require 'busted.compatibility'.exit
+local loadstring = require 'busted.compatibility'.loadstring
 local loaded = false
 
 return function(options)
   if loaded then return else loaded = true end
 
+  local isatty = io.type(io.stdout) == 'file' and term.isatty(io.stdout)
   options = tablex.update(require 'busted.options', options or {})
-  options.defaultOutput = term.isatty(io.stdout) and 'utfTerminal' or 'plainTerminal'
+  options.defaultOutput = isatty and 'utfTerminal' or 'plainTerminal'
 
   local busted = require 'busted.core'()
 
@@ -76,6 +78,13 @@ return function(options)
     package.cpath = (cliArgs.cpath .. ';' .. package.cpath):gsub(';;',';')
   end
 
+  -- Load and execute commands given on the command-line
+  if cliArgs.e then
+    for k,v in ipairs(cliArgs.e) do
+      loadstring(v)()
+    end
+  end
+
   -- watch for test errors and failures
   local failures = 0
   local errors = 0
@@ -110,7 +119,7 @@ return function(options)
   -- Set up randomization options
   busted.sort = cliArgs['sort-tests']
   busted.randomize = cliArgs['shuffle-tests']
-  busted.randomseed = tonumber(cliArgs.seed) or os.time()
+  busted.randomseed = tonumber(cliArgs.seed) or utils.urandom() or os.time()
 
   -- Set up output handler to listen to events
   outputHandlerLoader(busted, cliArgs.output, {
@@ -144,14 +153,12 @@ return function(options)
 
   -- Load test directory
   local rootFiles = cliArgs.ROOT or { fileName }
-  local pattern = cliArgs.pattern
+  local patterns = cliArgs.pattern
   local testFileLoader = require 'busted.modules.test_file_loader'(busted, cliArgs.loaders)
-  testFileLoader(rootFiles, pattern, {
+  testFileLoader(rootFiles, patterns, {
+    excludes = cliArgs['exclude-pattern'],
     verbose = cliArgs.verbose,
-    sort = cliArgs['sort-files'],
-    shuffle = cliArgs['shuffle-files'],
     recursive = cliArgs['recursive'],
-    seed = busted.randomseed
   })
 
   -- If running standalone, setup test file to be compatible with live coding
@@ -164,7 +171,11 @@ return function(options)
 
   local runs = cliArgs['repeat']
   local execute = require 'busted.execute'(busted)
-  execute(runs, { seed = cliArgs.seed })
+  execute(runs, {
+    seed = cliArgs.seed,
+    shuffle = cliArgs['shuffle-files'],
+    sort = cliArgs['sort-files'],
+  })
 
   busted.publish({ 'exit' })
 

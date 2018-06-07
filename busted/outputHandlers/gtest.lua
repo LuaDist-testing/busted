@@ -1,11 +1,10 @@
 local s = require 'say'
-local socket = require 'socket'
 local pretty = require 'pl.pretty'
 local term = require 'term'
 
 local colors
 
-local isatty = term.isatty(io.stdout) 
+local isatty = io.type(io.stdout) == 'file' and term.isatty(io.stdout)
 local isWindows = package.config:sub(1,1) == '\\'
 
 if isWindows and not os.getenv("ANSICON") or not isatty then
@@ -19,7 +18,7 @@ return function(options)
   local handler = require 'busted.outputHandlers.base'()
 
   local repeatSuiteString = '\nRepeating all tests (run %d of %d) . . .\n\n'
-  local randomizeString  = 'Note: Randomizing test order with a seed of %d.\n'
+  local randomizeString  = colors.yellow('Note: Randomizing test order with a seed of %d.\n')
   local suiteStartString = colors.green  ('[==========]') .. ' Running tests from scanned files.\n'
   local globalSetup      = colors.green  ('[----------]') .. ' Global test environment setup.\n'
   local fileStartString  = colors.green  ('[----------]') .. ' Running tests from %s\n'
@@ -61,10 +60,6 @@ return function(options)
   local failureCount = 0
   local errorCount = 0
 
-  local suiteStartTime
-  local fileStartTime
-  local testStartTime
-
   local pendingDescription = function(pending)
     local name = pending.name
     local string = ''
@@ -79,13 +74,13 @@ return function(options)
   end
 
   local failureDescription = function(failure)
-    local string
+    local string = failure.randomseed and ('Random seed: ' .. failure.randomseed .. '\n') or ''
     if type(failure.message) == 'string' then
-      string = failure.message
+      string = string .. failure.message
     elseif failure.message == nil then
-      string = 'Nil error'
+      string = string .. 'Nil error'
     else
-      string = pretty.write(failure.message)
+      string = string .. pretty.write(failure.message)
     end
 
     string = string .. '\n'
@@ -172,7 +167,6 @@ return function(options)
   end
 
   handler.suiteStart = function(suite, count, total, randomseed)
-    suiteStartTime = socket.gettime()
     if total > 1 then
       io.write(repeatSuiteString:format(count, total))
     end
@@ -187,7 +181,7 @@ return function(options)
   end
 
   handler.suiteEnd = function(suite, count, total)
-    local elapsedTime_ms = (socket.gettime() - suiteStartTime) * 1000
+    local elapsedTime_ms = suite.duration * 1000
     local tests = (testCount == 1 and 'test' or 'tests')
     local files = (fileCount == 1 and 'file' or 'files')
     io.write(globalTeardown)
@@ -199,7 +193,6 @@ return function(options)
   end
 
   handler.fileStart = function(file)
-    fileStartTime = socket.gettime()
     fileTestCount = 0
     io.write(fileStartString:format(file.name))
     io.flush()
@@ -207,7 +200,7 @@ return function(options)
   end
 
   handler.fileEnd = function(file)
-    local elapsedTime_ms = (socket.gettime() - fileStartTime) * 1000
+    local elapsedTime_ms = file.duration * 1000
     local tests = (fileTestCount == 1 and 'test' or 'tests')
     fileCount = fileCount + 1
     io.write(fileEndString:format(fileTestCount, tests, file.name, elapsedTime_ms))
@@ -216,7 +209,6 @@ return function(options)
   end
 
   handler.testStart = function(element, parent)
-    testStartTime = socket.gettime()
     io.write(runString:format(getFullName(element)))
     io.flush()
 
@@ -224,7 +216,7 @@ return function(options)
   end
 
   handler.testEnd = function(element, parent, status, debug)
-    local elapsedTime_ms = (socket.gettime() - testStartTime) * 1000
+    local elapsedTime_ms = element.duration * 1000
     local string
 
     fileTestCount = fileTestCount + 1

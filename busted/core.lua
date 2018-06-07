@@ -3,6 +3,7 @@ local setfenv = require 'busted.compatibility'.setfenv
 local unpack = require 'busted.compatibility'.unpack
 local path = require 'pl.path'
 local pretty = require 'pl.pretty'
+local system = require 'system'
 local throw = error
 
 local failureMt = {
@@ -44,7 +45,7 @@ return function()
   local mediator = require 'mediator'()
 
   local busted = {}
-  busted.version = '2.0.rc11-0'
+  busted.version = '2.0.rc12-0'
 
   local root = require 'busted.context'()
   busted.context = root.ref()
@@ -56,9 +57,17 @@ return function()
   local executors = {}
   local eattributes = {}
 
+  busted.gettime = system.gettime
+  busted.monotime = system.monotime
+  busted.sleep = system.sleep
   busted.status = require 'busted.status'
 
   function busted.getTrace(element, level, msg)
+    local function trimTrace(info)
+      local index = info.traceback:find('\n%s*%[C]')
+      info.traceback = info.traceback:sub(1, index)
+      return info
+    end
     level = level or  3
 
     local thisdir = path.dirname(debug.getinfo(1, 'Sl').source)
@@ -73,14 +82,14 @@ return function()
     info.message = msg
 
     local file = busted.getFile(element)
-    return file.getTrace(file.name, info)
+    return file and file.getTrace(file.name, info) or trimTrace(info)
   end
 
   function busted.rewriteMessage(element, message, trace)
     local file = busted.getFile(element)
     local msg = hasToString(message) and tostring(message)
     msg = msg or (message ~= nil and pretty.write(message) or 'Nil error')
-    msg = (file.rewriteMessage and file.rewriteMessage(file.name, msg) or msg)
+    msg = (file and file.rewriteMessage and file.rewriteMessage(file.name, msg) or msg)
 
     local hasFileLine = msg:match('^[^\n]-:%d+: .*')
     if not hasFileLine then
@@ -177,8 +186,19 @@ return function()
         status = 'error'
         trace = busted.getTrace(element, 3, ret[2])
         message = busted.rewriteMessage(element, ret[2], trace)
+      elseif status == 'failure' and descriptor ~= 'it' then
+        -- Only 'it' blocks can generate test failures. Failures in all
+        -- other blocks are errors outside the test.
+        status = 'error'
       end
-      busted.publish({ status, descriptor }, element, busted.context.parent(element), message, trace)
+      -- Note: descriptor may be different from element.descriptor when
+      -- safe_publish is used (i.e. for test start/end). The safe_publish
+      -- descriptor needs to be different for 'it' blocks so that we can
+      -- detect that a 'failure' in a test start/end handler is not really
+      -- a test failure, but rather an error outside the test, much like a
+      -- failure in a support function (i.e. before_each/after_each or
+      -- setup/teardown).
+      busted.publish({ status, element.descriptor }, element, busted.context.parent(element), message, trace)
     end
     ret[1] = busted.status(status)
 
@@ -189,6 +209,14 @@ return function()
   function busted.safe_publish(descriptor, channel, element, ...)
     local args = {...}
     local n = select('#', ...)
+    if channel[2] == 'start' then
+      element.starttick = busted.monotime()
+      element.starttime = busted.gettime()
+    elseif channel[2] == 'end' then
+      element.endtime = busted.gettime()
+      element.endtick = busted.monotime()
+      element.duration = element.starttick and (element.endtick - element.starttick)
+    end
     local status = busted.safe(descriptor, function()
       busted.publish(channel, element, unpack(args, 1, n))
     end, element)
@@ -202,6 +230,11 @@ return function()
   function busted.export(key, value)
     busted.exportApi(key, value)
     environment.set(key, value)
+  end
+
+  function busted.hide(key, value)
+    busted.api[key] = nil
+    environment.set(key, nil)
   end
 
   function busted.register(descriptor, executor, attributes)
@@ -244,9 +277,7 @@ return function()
 
     local edescriptor = alias or descriptor
     busted.executors[edescriptor] = publisher
-    if descriptor ~= 'file' then
-      busted.export(edescriptor, publisher)
-    end
+    busted.export(edescriptor, publisher)
 
     busted.subscribe({ 'register', descriptor }, function(name, fn, trace, attributes)
       local ctx = busted.context.get()
@@ -255,7 +286,12 @@ return function()
         attributes = attributes or {},
         name = name,
         run = fn,
-        trace = trace
+        trace = trace,
+        starttick = nil,
+        endtick = nil,
+        starttime = nil,
+        endtime = nil,
+        duration = nil,
       }
 
       busted.context.attach(plugin)

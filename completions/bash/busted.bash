@@ -37,7 +37,12 @@ _busted() {
       toks=( ${toks[@]-} $(compgen -f -X "!*.lua" -- ${cur} ) )
       toks=( ${toks[@]-} $(compgen -f -X "!*.moon" -- ${cur} ) )
       toks=( ${toks[@]-} $(compgen -d -- ${cur} ) )
-      _compopt_o_filenames
+
+      if declare -fF _compopt_o_filenames > /dev/null; then
+        _compopt_o_filenames
+      else
+        compopt -o filenames
+      fi
 
       COMPREPLY=( "${COMPREPLY[@]}" "${toks[@]}" )
       return 0
@@ -111,11 +116,19 @@ _busted() {
       _filedir
       return 0
       ;;
+    --lua)
+      _filedir
+      return 0
+      ;;
     --helper)
       _filedir
       return 0
       ;;
-    -p|--pattern)
+    -e)
+      # no completion available
+      return 0
+      ;;
+    -p|--pattern|--exclude-pattern)
       # no completion available
       return 0
       ;;
@@ -152,12 +165,15 @@ _busted() {
       --version
       -l --list
       -o --output=
-      -p --pattern=
+      -p --pattern= --exclude-pattern=
       -C --directory=
       -f --config-file=
       -t --tags= --exclude-tags=
       -m --lpath= --cpath=
       -r --run=
+      -e
+      --lua=
+      --ignore-lua
       --filter= --filter-out=
       --repeat=
       --seed=
