@@ -2,34 +2,55 @@ local moon = require('busted.moon')
 local path = require('pl.path')
 local dir = require('pl.dir')
 local tablex = require('pl.tablex')
-require'pl'
+local pretty = require('pl.pretty')
 
 -- exported module table
 busted = {}
 busted._COPYRIGHT   = "Copyright (c) 2013 Olivine Labs, LLC."
 busted._DESCRIPTION = "A unit testing framework with a focus on being easy to use. http://www.olivinelabs.com/busted"
-busted._VERSION     = "Busted 1.8"
+busted._VERSION     = "Busted 1.9.0"
 
 -- set defaults
 busted.defaultoutput = path.is_windows and "plain_terminal" or "utf_terminal"
-busted.defaultpattern = '_spec.lua$'
+busted.defaultpattern = '_spec'
 busted.defaultlua = 'luajit'
 busted.lpathprefix = "./src/?.lua;./src/?/?.lua;./src/?/init.lua"
 busted.cpathprefix = path.is_windows and "./csrc/?.dll;./csrc/?/?.dll;" or "./csrc/?.so;./csrc/?/?.so;"
 require('busted.languages.en')-- Load default language pack
 
+-- platform detection
+local system, sayer_pre, sayer_post
+if pcall(require, 'ffi') then
+  system = require('ffi').os
+elseif path.is_windows then
+  system = 'Windows'
+else
+  system = io.popen('uname -s'):read('*l')
+end
+
+if system == 'Linux' then
+  sayer_pre = 'espeak -s 160 '
+  sayer_post = ' > /dev/null 2>&1'
+elseif system and system:match('^Windows') then
+  sayer_pre = 'echo '
+  sayer_post = ' | ptts'
+else
+  sayer_pre = 'say '
+  sayer_post = ''
+end
+system = nil
+
 local options = {}
 local current_context
+local test_is_async
 
 -- report a test-process error as a failed test
 local internal_error = function(description, err)
   local tag = ""
-
   if options.tags and #options.tags > 0 then
     -- tags specified; must insert a tag to make sure the error gets displayed
     tag = " #"..options.tags[1]
   end
-
   if not current_context then
     busted.reset()
   end
@@ -42,17 +63,9 @@ local internal_error = function(description, err)
 end
 
 -- returns current time in seconds
-local function get_time()
-  local success, socket = pcall(function() return require "socket" end)
-  if success then
-    get_time = function()
-      return socket.gettime()
-    end
-  else
-    get_time = os.clock
-  end
-
-  return get_time()
+local get_time = os.clock
+if pcall(require, "socket") then
+  get_time = package.loaded["socket"].gettime
 end
 
 local language = function(lang)
@@ -63,7 +76,8 @@ local language = function(lang)
 end
 
 -- load the outputter as set in the options, revert to default if it fails
-local getoutputter = function(output, opath, default)
+local getoutputter  -- define first to enable recursion
+getoutputter = function(output, opath, default)
   local success, out, f
   if output:match(".lua$") then
     f = function()
@@ -97,11 +111,19 @@ local gettestfiles = function(root_file, pattern)
   if path.isfile(root_file) then
     filelist = { root_file }
   elseif path.isdir(root_file) then
-    local pattern = pattern ~= "" and pattern or defaultpattern
+    local pattern = pattern ~= "" and pattern or busted.defaultpattern
     filelist = dir.getallfiles(root_file)
 
     filelist = tablex.filter(filelist, function(filename)
       return path.basename(filename):find(pattern)
+    end)
+
+    filelist = tablex.filter(filelist, function(filename)
+      if path.is_windows then
+        return not filename:find('%\\%.%w+.%w+')
+      else
+        return not filename:find('/%.%w+.%w+')
+      end
     end)
   else
     filelist = {}
@@ -116,7 +138,27 @@ local load_testfile = function(filename)
   local old_TEST = _TEST
   _TEST = busted._VERSION
 
-  local success, err = pcall(function() moon.loadfile(filename)() end)
+  local success, err = pcall(function() 
+    local chunk,err
+    if moon.is_moon(filename) then
+      if moon.has_moon then
+        chunk,err = moon.loadfile(filename)
+      else
+        chunk = function()
+          busted.describe("Moon script not installed", function()
+            pending("File not tested because 'moonscript' isn't installed; "..tostring(filename))
+          end)
+        end
+      end      
+    else
+      chunk,err = loadfile(filename)
+    end
+    
+    if not chunk then
+      error(err,2)
+    end
+    chunk()
+  end)
 
   if not success then
     internal_error("Failed executing testfile; " .. tostring(filename), err)
@@ -132,9 +174,9 @@ local play_sound = function(failures)
     math.randomseed(os.time())
 
     if failures and failures > 0 then
-      io.popen("say \""..busted.messages.failure_messages[math.random(1, #busted.messages.failure_messages)]:format(failures).."\"")
+      io.popen(sayer_pre.."\""..busted.messages.failure_messages[math.random(1, #busted.messages.failure_messages)]:format(failures).."\""..sayer_post)
     else
-      io.popen("say \""..busted.messages.success_messages[math.random(1, #busted.messages.success_messages)].."\"")
+      io.popen(sayer_pre.."\""..busted.messages.success_messages[math.random(1, #busted.messages.success_messages)].."\""..sayer_post)
     end
   end
 end
@@ -160,13 +202,10 @@ local suite = {
   done = {},
   started = {},
   test_index = 1,
-  loop_pcall = pcall,
-  loop_step = function() end,
+  loop = require('busted.loop.default')
 }
 
-local options
-
-step = function(...)
+busted.step = function(...)
   local steps = { ... }
   if #steps == 1 and type(steps[1]) == 'table' then
     steps = steps[1]
@@ -187,13 +226,16 @@ step = function(...)
   next()
 end
 
-busted.step = step
-
-guard = function(f, test)
+busted.async = function(f)
+  test_is_async = true
+  if not f then
+    -- this allows async() to be called on its own to mark any test as async.
+    return
+  end
   local test = suite.tests[suite.test_index]
 
   local safef = function(...)
-    local result = { suite.loop_pcall(f, ...) }
+    local result = { suite.loop.pcall(f, ...) }
 
     if result[1] then
       return unpack(result, 2)
@@ -217,7 +259,141 @@ guard = function(f, test)
   return safef
 end
 
-busted.guard = guard
+local match_tags = function(testName)
+  if #options.tags > 0 then
+
+    for t = 1, #options.tags do
+      if testName:find(options.tags[t]) then
+        return true
+      end
+    end
+
+    return false
+  else
+    -- default to true if no tags are set
+    return true
+  end
+end
+
+local syncwrapper = function(f)
+  return function(done, ...)
+    test_is_async = nil
+    f(done, ...)
+    if not test_is_async then
+      -- async function wasn't called, so it is a sync test/function
+      -- hence must call it ourselves
+      done()
+    end
+  end
+end
+
+-- wraps a done callback into a done-object supporting tokens to sign-off
+local function wrap_done(done_callback)
+  local obj = {
+    tokens = {},
+    tokens_done = {},
+    done_cb = done_callback,
+
+    ordered = true,  -- default for sign off of tokens
+
+    -- adds tokens to the current wait list, does not change order/unordered
+    wait = function(self, ...)
+      local tlist = { ... }
+      for _, token in ipairs(tlist) do
+        if type(token) ~= "string" then
+          error("Wait tokens must be strings. Got "..type(token), 2)
+        end
+        table.insert(self.tokens, token)
+      end
+    end,
+
+    -- set list as unordered, adds tokens to current wait list
+    wait_unordered = function(self, ...)
+      self.ordered = false
+      self:wait(...)
+    end,
+
+    -- set list as ordered, adds tokens to current wait list
+    wait_ordered = function(self, ...)
+      self.ordered = true
+      self:wait(...)
+    end,
+
+    -- generates a message listing tokens received/open
+    tokenlist = function(self)
+      local list
+      if #self.tokens_done == 0 then
+        list = "No tokens received."
+      else
+        list = "Tokens received ("..tostring(#self.tokens_done)..")"
+        local s = ": "
+        for _,t in ipairs(self.tokens_done) do
+          list = list .. s .. "'"..t.."'"
+          s = ", "
+        end
+        list = list .. "."
+      end
+      if #self.tokens == 0 then
+        list = list .. " No more tokens expected."
+      else
+        list = list .. " Tokens not received ("..tostring(#self.tokens)..")"
+        local s = ": "
+        for _, t in ipairs(self.tokens) do
+          list = list .. s .. "'"..t.."'"
+          s = ", "
+        end
+        list = list .. "."
+      end
+      return list
+    end,
+    
+    -- marks a token as completed, checks for ordered/unordered, checks for completeness
+    done = function(self, ...) self:_done(...) end,  -- extra wrapper for same error level constant as __call method
+    _done = function(self, token)
+      if token then
+        if type(token) ~= "string" then
+          error("Wait tokens must be strings. Got "..type(token), 3)
+        end
+        if self.ordered then
+          if self.tokens[1] == token then
+            table.remove(self.tokens, 1)
+            table.insert(self.tokens_done, token)
+          else
+            if self.tokens[1] then
+              error(("Bad token, expected '%s' got '%s'. %s"):format(self.tokens[1], token, self:tokenlist()), 3)
+            else
+              error(("Bad token (no more tokens expected) got '%s'. %s"):format(token, self:tokenlist()), 3)
+            end
+          end
+        else
+          -- unordered
+          for i, t in ipairs(self.tokens) do
+            if t == token then
+              table.remove(self.tokens, i)
+              table.insert(self.tokens_done, token)
+              token = nil
+              break
+            end
+          end
+          if token then
+            error(("Unknown token '%s'. %s"):format(token, self:tokenlist()), 3)
+          end
+        end
+      end
+      if not next(self.tokens) then
+        -- no more tokens, so we're really done...
+        self.done_cb()
+      end
+    end,
+  }
+
+  setmetatable( obj, {
+    __call = function(self, ...)
+      self:_done(...)
+    end })
+
+  return obj
+end
 
 local next_test
 
@@ -230,11 +406,18 @@ next_test = function()
     suite.started[suite.test_index] = true
 
     local test = suite.tests[suite.test_index]
+
     assert(test, suite.test_index..debug.traceback('', 1))
+
     local steps = {}
 
     local execute_test = function(next)
+      local timer
       local done = function()
+        if timer then
+          timer:stop()
+          timer = nil
+        end
         if test.done_trace then
           if test.status.err == nil then
             local stack_trace = debug.traceback("", 2)
@@ -265,16 +448,37 @@ next_test = function()
         next()
       end
 
+      if suite.loop.create_timer then
+        settimeout = function(timeout)
+          if not timer then
+            timer = suite.loop.create_timer(timeout,function()
+              if not test.done_trace then
+                test.status.type = 'failure'
+                test.status.trace = ''
+                test.status.err = 'test timeout elapsed ('..timeout..'s)'
+                done()
+              end
+            end)
+          end
+        end
+      else
+        settimeout = nil
+      end
+
       test.done = done
 
-      local ok, err = suite.loop_pcall(test.f, done)
-
-      if not ok then
+      local ok, err = suite.loop.pcall(test.f, wrap_done(done)) 
+      if ok then
+        if settimeout and not timer and not test.done_trace then
+          settimeout(1.0)
+        end
+      else
         if type(err) == "table" then
           err = pretty.write(err)
         end
 
         local trace = debug.traceback("", 2)
+
         err, trace = moon.rewrite_traceback(err, trace)
 
         test.status.type = 'failure'
@@ -287,11 +491,11 @@ next_test = function()
     local check_before = function(context)
       if context.before then
         local execute_before = function(next)
-          context.before(
+          context.before(wrap_done(
             function()
               context.before = nil
               next()
-            end)
+            end))
         end
 
         push(steps, execute_before)
@@ -329,11 +533,11 @@ next_test = function()
         if context.after then
           if context:all_tests_done() then
             local execute_after = function(next)
-              context.after(
+              context.after(wrap_done(
                 function()
                   context.after = nil
                   next()
-                end)
+                end))
             end
 
             push(post_steps, execute_after)
@@ -399,16 +603,11 @@ local create_context = function(desc)
   return context
 end
 
-local suite_name
 
 busted.describe = function(desc, more)
-  if not suite_name then
-    suite_name = desc
-  end
-
   local context = create_context(desc)
 
-  for i, parent in ipairs(current_context.parents) do
+  for _, parent in ipairs(current_context.parents) do
     context:add_parent(parent)
   end
 
@@ -422,48 +621,24 @@ busted.describe = function(desc, more)
   current_context = old_context
 end
 
-busted.before = function(sync_before, async_before)
-  if async_before then
-    current_context.before = async_before
-  else
-    current_context.before = function(done)
-      sync_before()
-      done()
-    end
-  end
+busted.before = function(before_func)
+  assert(type(before_func) == "function", "Expected function, got "..type(before_func))
+  current_context.before = syncwrapper(before_func)
 end
 
-busted.before_each = function(sync_before, async_before)
-  if async_before then
-    current_context.before_each = async_before
-  else
-    current_context.before_each = function(done)
-      sync_before()
-      done()
-    end
-  end
+busted.before_each = function(before_func)
+  assert(type(before_func) == "function", "Expected function, got "..type(before_func))
+  current_context.before_each = syncwrapper(before_func)
 end
 
-busted.after = function(sync_after, async_after)
-  if async_after then
-    current_context.after = async_after
-  else
-    current_context.after = function(done)
-      sync_after()
-      done()
-    end
-  end
+busted.after = function(after_func)
+  assert(type(after_func) == "function", "Expected function, got "..type(after_func))
+  current_context.after = syncwrapper(after_func)
 end
 
-busted.after_each = function(sync_after, async_after)
-  if async_after then
-    current_context.after_each = async_after
-  else
-    current_context.after_each = function(done)
-      sync_after()
-      done()
-    end
-  end
+busted.after_each = function(after_func)
+  assert(type(after_func) == "function", "Expected function, got "..type(after_func))
+  current_context.after_each = syncwrapper(after_func)
 end
 
 local function buildInfo(debug_info)
@@ -473,7 +648,7 @@ local function buildInfo(debug_info)
     linedefined = debug_info.linedefined,
   }
 
-  fname = get_fname(info.short_src)
+  local fname = get_fname(info.short_src)
 
   if fname and moon.is_moon(fname) then
     info.linedefined = moon.rewrite_linenumber(fname, info.linedefined) or info.linedefined
@@ -493,9 +668,7 @@ busted.pending = function(name)
 
   local debug_info = debug.getinfo(2)
 
-  test.f = function(done)
-    done()
-  end
+  test.f = syncwrapper(function() end)
 
   test.status = {
     description = name,
@@ -503,10 +676,13 @@ busted.pending = function(name)
     info = buildInfo(debug_info)
   }
 
-  suite.tests[#suite.tests+1] = test
+  if match_tags(test.name) then
+    suite.tests[#suite.tests+1] = test
+  end
 end
 
-busted.it = function(name, sync_test, async_test)
+busted.it = function(name, test_func)
+  assert(type(test_func) == "function", "Expected function, got "..type(test_func))
   local test = {
     context = current_context,
     name = name
@@ -516,17 +692,8 @@ busted.it = function(name, sync_test, async_test)
 
   local debug_info
 
-  if async_test then
-    debug_info = debug.getinfo(async_test)
-    test.f = async_test
-  else
-    debug_info = debug.getinfo(sync_test)
-    -- make sync test run async
-    test.f = function(done)
-      sync_test()
-      done()
-    end
-  end
+  debug_info = debug.getinfo(test_func)
+  test.f = syncwrapper(test_func)
 
   test.status = {
     description = test.name,
@@ -534,7 +701,9 @@ busted.it = function(name, sync_test, async_test)
     info = buildInfo(debug_info)
   }
 
-  suite.tests[#suite.tests+1] = test
+  if match_tags(test.name) then
+    suite.tests[#suite.tests+1] = test
+  end
 end
 
 busted.reset = function()
@@ -545,61 +714,45 @@ busted.reset = function()
     done = {},
     started = {},
     test_index = 1,
-    loop_pcall = pcall,
-    loop_step = function() end,
+    loop = require('busted.loop.default')
   }
-  suite_name = nil
+  busted.output = busted.output_reset
 end
 
-busted.setloop = function(...)
-  local args = { ... }
-
-  if type(args[1]) == 'string' then
-    local loop = args[1]
-
-    if loop == 'ev' then
-      local ev = require'ev'
-
-      suite.loop_pcall = pcall
-      suite.loop_step = function()
-        ev.Loop.default:loop()
-      end
-    elseif loop == 'copas' then
-      local copas = require'copas'
-
-      require'coxpcall'
-
-      suite.loop_pcall = copcall
-      suite.loop_step = function()
-        copas.step(0)
-      end
-    end
+busted.setloop = function(loop)
+  if type(loop) == 'string' then
+     suite.loop = require('busted.loop.'..loop)
   else
-    suite.loop_step = args[1]
-    suite.loop_pcall = args[2] or pcall
+     assert(loop.pcall)
+     assert(loop.step)
+     suite.loop = loop
   end
 end
 
 busted.run_internal_test = function(describe_tests)
   local suite_bak = suite
   local output_bak = busted.output
+  local current_context_bak = current_context
+  busted.reset()
 
   busted.output = require 'busted.output.stub'()
-
   suite = {
     tests = {},
     done = {},
     started = {},
     test_index = 1,
-    loop_pcall = pcall,
-    loop_step = function() end
+    loop = require('busted.loop.default')
   }
 
-  describe_tests()
+  if type(describe_tests) == 'function' then
+     describe_tests()
+  else
+     load_testfile(describe_tests)
+  end
 
   repeat
     next_test()
-    suite.loop_step()
+    suite.loop.step()
   until #suite.done == #suite.tests
 
   local statuses = {}
@@ -609,6 +762,7 @@ busted.run_internal_test = function(describe_tests)
   end
 
   suite = suite_bak
+  current_context = current_context_bak
   busted.output = output_bak
 
   return statuses
@@ -620,6 +774,7 @@ busted.run = function(got_options)
 
   language(options.lang)
   busted.output = getoutputter(options.output, options.fpath, busted.defaultoutput)
+  busted.output_reset = busted.output  -- store in case we need a reset
   -- if no filelist given, get them
   options.filelist = options.filelist or gettestfiles(options.root_file, options.pattern)
   -- load testfiles
@@ -634,7 +789,7 @@ busted.run = function(got_options)
   local function run_suite()
     repeat
       next_test()
-      suite.loop_step()
+      suite.loop.step()
     until #suite.done == #suite.tests
 
     for _, test in ipairs(suite.tests) do
@@ -687,19 +842,20 @@ busted.run = function(got_options)
   return status_string, failures
 end
 
-it = busted.it
-pending = busted.pending
-describe = busted.describe
-before = busted.before
-after = busted.after
-setup = busted.before
-busted.setup = busted.before
-teardown = busted.after
+busted.setup    = busted.before
 busted.teardown = busted.after
-before_each = busted.before_each
-after_each = busted.after_each
-step = step
-setloop = busted.setloop
+it              = busted.it
+pending         = busted.pending
+describe        = busted.describe
+before          = busted.before
+after           = busted.after
+setup           = busted.setup
+teardown        = busted.teardown
+before_each     = busted.before_each
+after_each      = busted.after_each
+step            = busted.step
+setloop         = busted.setloop
+async           = busted.async
 
 return setmetatable(busted, {
   __call = function(self, ...)

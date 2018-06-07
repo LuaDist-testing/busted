@@ -1,9 +1,17 @@
+-- This file was automatically generated for the LuaDist project.
+
 package = "busted"
-version = "1.8-0"
+version = "1.9.0-0"
+-- LuaDist source
 source = {
-  url = "https://github.com/Olivine-Labs/busted/archive/v1.8.tar.gz",
-  dir = "busted-1.8"
+  tag = "1.9.0-0",
+  url = "git://github.com/LuaDist-testing/busted.git"
 }
+-- Original source
+-- source = {
+--   url = "https://github.com/Olivine-Labs/busted/archive/v1.9.0.tar.gz",
+--   dir = "busted-1.9.0"
+-- }
 description = {
   summary = "Elegant Lua unit testing.",
   detailed = [[
@@ -23,7 +31,7 @@ dependencies = {
   "luafilesystem >= 1.5.0",
   "dkjson >= 2.1.0",
   "say >= 1.2-1",
-  "luassert >= 1.6-1",
+  "luassert >= 1.7.0-0",
   "ansicolors >= 1.0-1",
   "penlight >= 1.0.0-1"
 }
@@ -47,6 +55,9 @@ build = {
     ["busted.languages.ua"] = "src/languages/ua.lua",
     ["busted.languages.zh"] = "src/languages/zh.lua",
     ["busted.languages.ja"] = "src/languages/ja.lua",
+    ["busted.loop.default"] = "src/loop/default.lua",
+    ["busted.loop.ev"] = "src/loop/ev.lua",
+    ["busted.loop.copas"] = "src/loop/copas.lua",
   },
   install = {
     bin = {
