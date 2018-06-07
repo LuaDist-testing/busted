@@ -10,9 +10,9 @@ settimeout = nil
 
 -- exported module table
 local busted = {}
-busted._COPYRIGHT   = "Copyright (c) 2013 Olivine Labs, LLC."
+busted._COPYRIGHT   = "Copyright (c) 2014 Olivine Labs, LLC."
 busted._DESCRIPTION = "A unit testing framework with a focus on being easy to use. http://www.olivinelabs.com/busted"
-busted._VERSION     = "Busted 1.10.0"
+busted._VERSION     = "Busted 1.11.0"
 
 -- set defaults
 busted.defaultoutput = path.is_windows and "plain_terminal" or "utf_terminal"
@@ -377,15 +377,16 @@ next_test = function()
 
       this_test.context:decrement_test_count()
       if finally_callback then
- 	      finally_callback()
-	      finally_callback = nil
+         finally_callback()
+         finally_callback = nil
       end
+
       do_next()
     end
 
     if suite.loop.create_timer then
---TODO: global `settimeout` is created for an `it()` test, but never deleted, so it remains in the global namespace
---TODO: timeouts should also be available for before/after/before_each/after_each      
+      --TODO: global `settimeout` is created for an `it()` test, but never deleted, so it remains in the global namespace
+      --TODO: timeouts should also be available for before/after/before_each/after_each
       settimeout = function(timeout)
         if not timer then
           timer = suite.loop.create_timer(timeout,function()
@@ -416,7 +417,7 @@ next_test = function()
     if ok then
       -- test returned, set default timer if one hasn't been set already
       if settimeout and not timer and not this_test.done_trace then
---TODO: parametrize constant!
+        --TODO: parametrize constant!
         settimeout(1.0)
       end
     else
@@ -427,7 +428,7 @@ next_test = function()
       -- remove all frames after the last frame found in the test file
       local lines = {}
       local j = 0
-      local last_j = nil
+      local last_j = 0
       for line in trace:gmatch("[^\r\n]+") do
         j = j + 1
         lines[j] = line
@@ -436,7 +437,10 @@ next_test = function()
           last_j = j
         end
       end
-      trace = table.concat(lines, trace:match("[\r\n]+"), 1, last_j)
+      -- the error may not originate from testfile in all cases
+      if last_j then
+        trace = table.concat(lines, trace:match("[\r\n]+"), 1, last_j)
+      end
 
       err, trace = moon.rewrite_traceback(err, trace)
 
@@ -563,7 +567,7 @@ local create_context = function(desc)
 end
 
 
-busted.describe = function(desc, more)
+busted.raw_describe = function(desc, more)
   local context = create_context(desc)
 
   for _, parent in ipairs(current_context.parents) do
@@ -575,9 +579,21 @@ busted.describe = function(desc, more)
   local old_context = current_context
 
   current_context = context
+  assert(type(more) == "function", "Expected function, got "..type(more))
   more()
 
   current_context = old_context
+end
+
+local busted_raw_describe = busted.raw_describe -- cache to local for performance (avoid table lookup)
+busted.describe = function(desc, more)
+  if type(more) == "nil" then
+    return function(more)
+      return busted_raw_describe(desc, more)
+    end
+  end
+
+  return busted_raw_describe(desc, more)
 end
 
 busted.setup = function(before_func)
@@ -642,7 +658,7 @@ busted.pending = function(name)
   end
 end
 
-busted.it = function(name, test_func)
+busted.raw_it = function(name, test_func)
   assert(type(test_func) == "function", "Expected function, got "..type(test_func))
 
   local test = {
@@ -668,6 +684,17 @@ busted.it = function(name, test_func)
   if match_tags(test.name) then
     table.insert(suite.tests, test)
   end
+end
+
+local busted_raw_it = busted.raw_it -- cache to local for performance (avoid table lookup)
+busted.it = function(name, test_func)
+  if type(test_func) == "nil" then
+    return function(test_func)
+      return busted_raw_it(name, test_func)
+    end
+  end
+
+  return busted_raw_it(name, test_func)
 end
 
 busted.reset = function()
@@ -737,7 +764,7 @@ busted.run = function(got_options)
   options = got_options
 
   language(options.lang)
-  busted.output = getoutputter(options.output, options.fpath, busted.defaultoutput)
+  busted.output = getoutputter(options.output, options.path, busted.defaultoutput)
   busted.output_reset = busted.output  -- store in case we need a reset
   -- if no filelist given, get them
   options.filelist = options.filelist or gettestfiles(options.root_file, options.pattern)
@@ -753,13 +780,13 @@ busted.run = function(got_options)
   local function run_suite(s)
     local old_TEST = _TEST
     _TEST = busted._VERSION
-    
+
     suite = s
     repeat
       next_test()
       suite.loop.step()
     until #suite.done == #suite.tests
-    
+
     _TEST = old_TEST
 
     for _, test in ipairs(suite.tests) do
@@ -807,5 +834,5 @@ return setmetatable(busted, {
   __call = function(self, ...)
     return busted.run(...)
   end
- })
+})
 

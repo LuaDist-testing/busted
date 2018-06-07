@@ -6,7 +6,7 @@ Busted
 busted is a unit testing framework with a focus on being **easy to
 use**. Supports Lua >= 5.1, luajit >= 2.0.0, and moonscript.
 
-Check out the [official docs](http://www.olivinelabs.com/busted) for
+Check out the [official docs](http://olivinelabs.com/busted) for
 extended info.
 
 busted test specs read naturally without being too verbose. You can even
@@ -71,9 +71,11 @@ Install these dependencies for core testing:
 
 ```
 luarocks install copas
-luarocks install lua-ev
+luarocks install lua-ev scm --server=http://luarocks.org/repositories/rocks-scm/
 luarocks install moonscript
 ```
+
+(Note: you must have `libev` installed to run `lua-ev`; you can `brew install libev` or `apt-get install libev-dev`)
 
 Then to reinstall and run tests:
 
