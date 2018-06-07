@@ -37,6 +37,7 @@ cli:add_option('--cpath=PATH', 'optional path to be prefixed to the Lua C module
 cli:add_option('-r, --run=RUN', 'config to run from .busted file')
 cli:add_option('--lang=LANG', 'language for error messages', 'en')
 cli:add_option('--loaders=NAME', 'test file loaders', defaultLoaders)
+cli:add_option('--helper=PATH', 'A helper script that is run before tests')
 
 cli:add_flag('-c, --coverage', 'do code coverage analysis (requires `LuaCov` to be installed)')
 
@@ -46,12 +47,37 @@ cli:add_flag('--suppress-pending', 'suppress `pending` test output')
 cli:add_flag('--defer-print', 'defer print to when test suite is complete')
 
 -- Parse the cli arguments
-local cliArgs = cli:parse_args()
+local cliArgs, hasError = cli:parse()
+if hasError then
+  os.exit(1)
+end
 
 -- Return early if only asked for the version
 if cliArgs.version then
   return print(busted.version)
 end
+
+-- Load current working directory
+local fpath = cliArgs.d
+
+-- Load busted config file if available
+local configFile = { }
+local bustedConfigFilePath = path.normpath(path.join(fpath, '.busted'))
+
+local bustedConfigFile = pcall(function() configFile = loadfile(bustedConfigFilePath)() end)
+
+if bustedConfigFile then
+  local config, err = configLoader(configFile, cliArgs)
+
+  if err then
+    print(err)
+  end
+end
+
+-- Load test directory
+local rootFile = path.normpath(path.join(fpath, cliArgs.ROOT))
+
+local pattern = cliArgs.pattern
 
 local tags = {}
 local excludeTags = {}
@@ -62,26 +88,6 @@ end
 
 if cliArgs['exclude-tags'] ~= '' then
   excludeTags = utils.split(cliArgs['exclude-tags'], ',')
-end
-
--- Load current working directory
-local fpath = cliArgs.d
-
--- Load test directory
-local rootFile = path.normpath(path.join(fpath, cliArgs.ROOT))
-
-local pattern = cliArgs.pattern
-
--- Load busted config file if available
-local bustedConfigFilePath = path.normpath(path.join(fpath, '.busted'))
-local bustedConfigFile = pcall(function() tasks = loadfile(bustedConfigFilePath)() end)
-
-if bustedConfigFile then
-  local config, err = configLoader(bustedConfigFile, config, cliArgs)
-
-  if err then
-    print(err)
-  end
 end
 
 -- If coverage arg is passed in, load LuaCovsupport
@@ -102,6 +108,10 @@ if #cliArgs.cpath > 0 then
   cpathprefix = cpathprefix:gsub('^%.[/%\\]', fpath )
   cpathprefix = cpathprefix:gsub(';%.[/%\\]', ';' .. fpath)
   package.cpath = (cpathprefix .. ';' .. package.cpath):gsub(';;',';')
+end
+
+if cliArgs.helper ~= '' then
+  dofile(cliArgs.helper)
 end
 
 local loaders = {}
@@ -130,7 +140,7 @@ local outputHandlerOptions = {
   deferPrint = cliArgs['defer-print']
 }
 
-outputHandler = outputHandlerLoader(cliArgs.output, cliArgs.o, outputHandlerOptions, busted)
+local outputHandler = outputHandlerLoader(cliArgs.output, cliArgs.o, outputHandlerOptions, busted)
 outputHandler:subscribe(outputHandlerOptions)
 
 if cliArgs.s then
@@ -171,14 +181,16 @@ testFileLoader(rootFile, pattern)
 local failures = 0
 local errors = 0
 
-busted.subscribe({ 'error' }, function()
+busted.subscribe({ 'error' }, function(...)
   errors = errors + 1
+  return nil, true
 end)
 
 busted.subscribe({ 'test', 'end' }, function(element, parent, status)
   if status == 'failure' then
     failures = failures + 1
   end
+  return nil, true
 end)
 
 busted.publish({ 'suite', 'start' })
@@ -189,5 +201,4 @@ local exit = 0
 if failures > 0 or errors > 0 then
   exit = 1
 end
-
 os.exit(exit)

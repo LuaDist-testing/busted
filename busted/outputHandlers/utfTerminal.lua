@@ -143,9 +143,10 @@ return function(options, busted)
     return nil, true
   end
 
-  busted.subscribe({ 'test', 'end' }, handler.testEnd)
+  local s = busted.subscribe({ 'test', 'end' }, handler.testEnd, { predicate = handler.cancelOnPending })
   busted.subscribe({ 'suite', 'end' }, handler.suiteEnd)
   busted.subscribe({ 'error', 'file' }, handler.error)
+  busted.subscribe({ 'error', 'describe' }, handler.error)
 
   return handler
 end
