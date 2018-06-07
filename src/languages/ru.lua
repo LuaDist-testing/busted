@@ -21,17 +21,17 @@ s:set("output.success_single", "прошел")
 
 s:set("output.seconds", "секунд")
 
----- definitions following are not used within the 'say' namespace but are defined as globals
-failure_messages = {
-  "У тебя %d просратых тестов",
-  "Твои тесты поломаны",
-  "Твой код говеный - пойди напейся!"
+---- definitions following are not used within the 'say' namespace
+return {
+  failure_messages = {
+    "У тебя %d просратых тестов",
+    "Твои тесты поломаны",
+    "Твой код говеный - пойди напейся!"
+  },
+  success_messages = {
+    "Поехали!",
+    "Жизнь - хороша!",
+    "Ффух в этот раз пронесло!",
+    "Ура!"
+  }
 }
-
-success_messages = {
-  "Поехали!",
-  "Жизнь - хороша!",
-  "Ффух в этот раз пронесло!",
-  "Ура!"
-}
-

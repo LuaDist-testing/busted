@@ -22,16 +22,16 @@ s:set("output.success_single", "пройшов")
 s:set("output.seconds", "секунд")
 
 
----- definitions following are not used within the 'say' namespace but are defined as globals
-failure_messages = {
-  "Ти зрадив %d тестів!",
-  "Ой йо..",
-  "Вороги поламали наші тести!"
+---- definitions following are not used within the 'say' namespace
+return {
+  failure_messages = {
+    "Ти зрадив %d тестів!",
+    "Ой йо..",
+    "Вороги поламали наші тести!"
+  },
+  success_messages = {
+    "Слава Україні! Героям Слава!",
+    "Тестування успішно пройдено!",
+    "Всі баги знищено!"
+  }
 }
-
-success_messages = {
-  "Слава Україні! Героям Слава!",
-  "Тестування успішно пройдено!",
-  "Всі баги знищено!"
-}
-

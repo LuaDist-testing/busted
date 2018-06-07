@@ -21,22 +21,23 @@ s:set("output.success_single", "succes")
 
 s:set("output.seconds", "seconden")
 
--- definitions following are not used within the 'say' namespace but are defined as globals
-failure_messages = {
-  "Je hebt %d busted specs",
-  "Je specs zijn busted",
-  "Je code is slecht en zo zou jij je ook moeten voelen",
-  "Je code zit in de Gevaren Zone",
-  "Vreemd spelletje. The enige manier om te winnen is door niet te testen",
-  "Mijn oma schreef betere specs op een 3 86",
-  "Elke keer dat iets mislukt, nog een biertje drinken",
-  "Voelt klote man"
-}
-
-success_messages = {
-  "Joeperdepoep, de specs zijn er door",
-  "Doet er niet toe, had specs",
-  "Voelt goed, man",
-  "Fantastisch success",
-  "Testen geslaagd, neem nog een biertje",
+-- definitions following are not used within the 'say' namespace
+return {
+  failure_messages = {
+    "Je hebt %d busted specs",
+    "Je specs zijn busted",
+    "Je code is slecht en zo zou jij je ook moeten voelen",
+    "Je code zit in de Gevaren Zone",
+    "Vreemd spelletje. The enige manier om te winnen is door niet te testen",
+    "Mijn oma schreef betere specs op een 3 86",
+    "Elke keer dat iets mislukt, nog een biertje drinken",
+    "Voelt klote man"
+  },
+  success_messages = {
+    "Joeperdepoep, de specs zijn er door",
+    "Doet er niet toe, had specs",
+    "Voelt goed, man",
+    "Fantastisch success",
+    "Testen geslaagd, neem nog een biertje",
+  }
 }
