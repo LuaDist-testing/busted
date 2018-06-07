@@ -5,10 +5,10 @@ local pretty = require 'pl.pretty'
 return function(options, busted)
   local handler = require 'busted.outputHandlers.base'(busted)
 
-  local successDot =  ansicolors('%{green}●')
-  local failureDot =  ansicolors('%{red}●')
-  local errorDot =  ansicolors('%{magenta}●')
-  local pendingDot = ansicolors('%{yellow}●')
+  local successDot = ansicolors('%{green}●')
+  local failureDot = ansicolors('%{red}◼')
+  local errorDot   = ansicolors('%{magenta}✱')
+  local pendingDot = ansicolors('%{yellow}◌')
 
   local pendingDescription = function(pending)
     local name = pending.name
@@ -129,7 +129,13 @@ return function(options, busted)
     return nil, true
   end
 
-  handler.suiteEnd = function()
+  handler.suiteStart = function(count, total)
+    local runString = (total > 1 and '\nRepeating all tests (run %d of %d) . . .\n\n' or '')
+    io.write(runString:format(count, total))
+    io.flush()
+  end
+
+  handler.suiteEnd = function(count, total)
     print('')
     print(statusString())
 
@@ -159,6 +165,7 @@ return function(options, busted)
   end
 
   busted.subscribe({ 'test', 'end' }, handler.testEnd, { predicate = handler.cancelOnPending })
+  busted.subscribe({ 'suite', 'start' }, handler.suiteStart)
   busted.subscribe({ 'suite', 'end' }, handler.suiteEnd)
   busted.subscribe({ 'error', 'file' }, handler.error)
   busted.subscribe({ 'failure', 'file' }, handler.error)

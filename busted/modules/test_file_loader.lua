@@ -1,3 +1,5 @@
+local s = require 'say'
+
 return function(busted, loaders, options)
   local path = require 'pl.path'
   local dir = require 'pl.dir'
@@ -16,8 +18,8 @@ return function(busted, loaders, options)
     if path.isfile(rootFile) then
       fileList = { rootFile }
     elseif path.isdir(rootFile) then
-      local pattern = pattern
-      fileList = dir.getallfiles(rootFile)
+      local getfiles = options.recursive and dir.getallfiles or dir.getfiles
+      fileList = getfiles(rootFile)
 
       fileList = tablex.filter(fileList, function(filename)
         return path.basename(filename):find(pattern)
@@ -68,6 +70,10 @@ return function(busted, loaders, options)
 
         busted.executors.file(fileName, file)
       end
+    end
+
+    if #fileList == 0 then
+      busted.publish({ 'error' }, {}, nil, s('output.no_test_files_match'):format(pattern), {})
     end
 
     return fileList

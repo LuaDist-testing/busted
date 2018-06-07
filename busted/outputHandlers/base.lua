@@ -23,14 +23,16 @@ return function(busted)
       require('busted.languages.' .. options.language)
     end
 
-    busted.subscribe({ 'suite', 'repeat' }, handler.baseSuiteRepeat, { priority = 1 })
+    busted.subscribe({ 'suite', 'reinitialize' }, handler.baseSuiteRepeat, { priority = 1 })
     busted.subscribe({ 'suite', 'start' }, handler.baseSuiteStart, { priority = 1 })
     busted.subscribe({ 'suite', 'end' }, handler.baseSuiteEnd, { priority = 1 })
-    busted.subscribe({ 'test', 'start' }, handler.baseTestStart, { predicate = handler.cancelOnPending })
-    busted.subscribe({ 'test', 'end' }, handler.baseTestEnd, { predicate = handler.cancelOnPending })
-    busted.subscribe({ 'pending' }, handler.basePending, { predicate = handler.cancelOnPending })
-    busted.subscribe({ 'failure' }, handler.baseError)
-    busted.subscribe({ 'error' }, handler.baseError)
+    busted.subscribe({ 'test', 'start' }, handler.baseTestStart, { priority = 1, predicate = handler.cancelOnPending })
+    busted.subscribe({ 'test', 'end' }, handler.baseTestEnd, { priority = 1, predicate = handler.cancelOnPending })
+    busted.subscribe({ 'pending' }, handler.basePending, { priority = 1, predicate = handler.cancelOnPending })
+    busted.subscribe({ 'failure', 'it' }, handler.baseTestFailure, { priority = 1 })
+    busted.subscribe({ 'error', 'it' }, handler.baseTestError, { priority = 1 })
+    busted.subscribe({ 'failure' }, handler.baseError, { priority = 1 })
+    busted.subscribe({ 'error' }, handler.baseError, { priority = 1 })
   end
 
   handler.getFullName = function(context)
@@ -98,7 +100,6 @@ return function(busted)
   end
 
   handler.baseTestEnd = function(element, parent, status, debug)
-
     local isError
     local insertTable
 
@@ -110,10 +111,10 @@ return function(busted)
       handler.pendingsCount = handler.pendingsCount + 1
     elseif status == 'failure' then
       insertTable = handler.failures
-      handler.failuresCount = handler.failuresCount + 1
+      -- failure count already incremented in error handler
     elseif status == 'error' then
+      -- error count already incremented in error handler
       insertTable = handler.errors
-      handler.errorsCount = handler.errorsCount + 1
       isError = true
     end
 
@@ -133,25 +134,38 @@ return function(busted)
     return nil, true
   end
 
-  handler.basePending = function(element, parent, message, debug)
-    if element.descriptor == 'it' then
-      local id = tostring(element)
-      handler.inProgress[id].message = message
-      handler.inProgress[id].trace = debug
-    end
+  local function saveInProgress(element, message, debug)
+    local id = tostring(element)
+    handler.inProgress[id].message = message
+    handler.inProgress[id].trace = debug
+  end
 
+  local function saveError(element, parent, message, debug)
+    if parent.randomseed then
+      message = 'Random Seed: ' .. parent.randomseed .. '\n' .. message
+    end
+    saveInProgress(element, message, debug)
+  end
+
+  handler.basePending = function(element, parent, message, debug)
+    saveInProgress(element, message, debug)
+    return nil, true
+  end
+
+  handler.baseTestFailure = function(element, parent, message, debug)
+    handler.failuresCount = handler.failuresCount + 1
+    saveError(element, parent, message, debug)
+    return nil, true
+  end
+
+  handler.baseTestError = function(element, parent, message, debug)
+    handler.errorsCount = handler.errorsCount + 1
+    saveError(element, parent, message, debug)
     return nil, true
   end
 
   handler.baseError = function(element, parent, message, debug)
-    if element.descriptor == 'it' then
-      if parent.randomseed then
-        message = 'Random Seed: ' .. parent.randomseed .. '\n' .. message
-      end
-      local id = tostring(element)
-      handler.inProgress[id].message = message
-      handler.inProgress[id].trace = debug
-    else
+    if element.descriptor ~= 'it' then
       handler.errorsCount = handler.errorsCount + 1
       table.insert(handler.errors, handler.format(element, parent, message, debug, true))
     end

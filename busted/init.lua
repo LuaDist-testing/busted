@@ -132,6 +132,7 @@ local function init(busted)
   end
 
   local it = function(element)
+    local parent = busted.context.parent(element)
     local finally
 
     busted.publish({ 'test', 'start' }, element, parent)
@@ -151,11 +152,9 @@ local function init(busted)
       status:update('error')
     end
 
-    local parent = busted.context.parent(element)
     local pass, ancestor = execAll('before_each', parent, true)
-
     if pass then
-      status:update(busted.safe('element', element.run, element))
+      status:update(busted.safe('it', element.run, element))
     else
       updateErrorStatus('before_each')
     end
@@ -172,7 +171,7 @@ local function init(busted)
   end
 
   local pending = function(element)
-    local parent = busted.context.parent(pending)
+    local parent = busted.context.parent(element)
     busted.publish({ 'test', 'start' }, element, parent)
     busted.publish({ 'test', 'end' }, element, parent, 'pending')
   end
@@ -212,11 +211,12 @@ end
 
 return setmetatable({}, {
   __call = function(self, busted)
+    local root = busted.context.get()
     init(busted)
 
     return setmetatable(self, {
-      __index = function(self, descriptor)
-        return busted.executors[descriptor]
+      __index = function(self, key)
+        return rawget(root.env, key) or busted.executors[key]
       end,
 
       __newindex = function(self, key, value)

@@ -101,6 +101,10 @@ _busted() {
       _filedir -d
       return 0
       ;;
+    -Xoutput|--Xhelper)
+      # no completion available
+      return 0
+      ;;
     --repeat)
       # no completion available
       return 0
@@ -116,7 +120,7 @@ _busted() {
       -h --help
       -v --verbose
       --version
-      --list
+      -l --list
       -o --output=
       -p --pattern=
       -d --cwd=
@@ -131,7 +135,10 @@ _busted() {
       --helper=
       -c --coverage
       -s --enable-sound
+      -Xoutput
+      -Xhelper
       --no-keep-going
+      --no-recursive
       --shuffle --shuffle-tests --shuffle-files
       --sort --sort-tests --sort-files
       --supress-pending
